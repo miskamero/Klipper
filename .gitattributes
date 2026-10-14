@@ -1,2 +1,24 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Keep maintained code consistent with Prettier/rustfmt across Windows and Linux.
+/src/** text eol=lf
+/src-tauri/src/** text eol=lf
+/src-tauri/tests/** text eol=lf
+/src-tauri/build.rs text eol=lf
+/src-tauri/tauri.conf.json text eol=lf
+/src-tauri/capabilities/*.json text eol=lf
+/tooling/eslint/*.js text eol=lf
+/tooling/eslint/package.json text eol=lf
+/.prettierrc.json text eol=lf
+/eslint.config.mjs text eol=lf
+/package.json text eol=lf
+/tsconfig.json text eol=lf
+/vite.config.ts text eol=lf
+/index.html text eol=lf
+/README.md text eol=lf
+/NOTICE.md text eol=lf
+/.gitattributes text eol=lf
+/.prettierignore text eol=lf
+/.npmrc text eol=lf
+/.editorconfig text eol=lf

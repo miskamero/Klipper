@@ -1,0 +1,166 @@
+@use "../styles/tokens" as t;
+
+.inspector {
+	min-width: 0;
+	padding: 20px 16px;
+	h2,
+	h3 {
+		margin: 0;
+		font-size: 16px;
+		font-weight: 600;
+	}
+	p {
+		color: t.$text-secondary;
+		font-size: 13px;
+		line-height: 1.5;
+		overflow-wrap: anywhere;
+	}
+	dl {
+		margin: 12px 0;
+	}
+	dl > div {
+		display: grid;
+		grid-template-columns: minmax(96px, 0.85fr) minmax(0, 1.4fr);
+		gap: 12px;
+		padding: 8px 0;
+		border-bottom: 1px solid t.$border;
+		font-size: 14px;
+		line-height: 1.5;
+	}
+	dt {
+		color: t.$text-secondary;
+		overflow-wrap: anywhere;
+	}
+	dd {
+		margin: 0;
+		text-align: left;
+		overflow-wrap: anywhere;
+		user-select: text;
+	}
+	.error {
+		border-left: 2px solid t.$accent;
+		padding-left: 12px;
+		color: t.$text-primary;
+	}
+	summary {
+		cursor: pointer;
+		border-radius: 4px;
+		&:hover {
+			background: t.$surface-elevated;
+		}
+	}
+}
+.heading,
+.audioHeading {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+}
+.heading {
+	padding-bottom: 12px;
+	border-bottom: 1px solid t.$border;
+}
+.audioHeading {
+	margin-top: 20px;
+	> span {
+		padding: 4px 8px;
+		border-radius: 4px;
+		background: t.$surface-elevated;
+		color: t.$text-primary;
+		font-size: 13px;
+	}
+}
+.note {
+	margin: 8px 0 12px;
+}
+.technical {
+	summary {
+		padding: 8px 0;
+		color: t.$text-secondary;
+		font-size: 13px;
+	}
+}
+.track {
+	border-top: 1px solid t.$border;
+	&:last-child {
+		border-bottom: 1px solid t.$border;
+	}
+	summary {
+		min-height: 44px;
+		padding: 8px 4px;
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		font-size: 13px;
+		&::before {
+			content: "\203A";
+			color: t.$text-secondary;
+			font-size: 18px;
+		}
+		&::-webkit-details-marker {
+			display: none;
+		}
+	}
+	&[open] summary::before {
+		transform: rotate(90deg);
+	}
+	&[open] summary {
+		background: t.$surface-elevated;
+	}
+	dl {
+		margin: 0 4px 12px;
+	}
+}
+.number {
+	color: t.$accent;
+	font-variant-numeric: tabular-nums;
+}
+.codec {
+	font-weight: 600;
+}
+.layout {
+	color: t.$text-secondary;
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+.language {
+	margin-left: auto;
+	color: t.$text-secondary;
+	overflow-wrap: anywhere;
+	min-width: 0;
+}
+
+.identity {
+	padding-bottom: 16px;
+	border-bottom: 1px solid t.$border;
+	h1 {
+		margin: 8px 0;
+		font-size: 21px;
+		font-weight: 600;
+		line-height: 1.35;
+		overflow-wrap: anywhere;
+		user-select: text;
+	}
+	p {
+		margin: 0;
+	}
+	.kicker {
+		font-size: 12px;
+		letter-spacing: 0.8px;
+		color: t.$text-secondary;
+		margin-bottom: 8px;
+	}
+}
+.file {
+	border-bottom: 1px solid t.$border;
+	margin-bottom: 20px;
+	summary {
+		padding: 12px 0;
+		color: t.$text-secondary;
+		font-size: 13px;
+	}
+}
+.propertiesHeading {
+	margin-top: 20px !important;
+}

@@ -1,0 +1,9 @@
+[[permission]]
+identifier = "recording-select"
+description = "Open the native picker and grant access to the chosen video."
+commands.allow = ["select_recording"]
+
+[[permission]]
+identifier = "recording-analyze"
+description = "Analyze the current user-selected recording by opaque ID."
+commands.allow = ["analyze_recording"]

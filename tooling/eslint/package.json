@@ -1,0 +1,12 @@
+{
+	"name": "@klipper/eslint-typescript",
+	"version": "0.0.0",
+	"license": "GPL-3.0-only",
+	"private": true,
+	"type": "module",
+	"exports": "./index.js",
+	"dependencies": {
+		"typescript": "~6.0.2",
+		"typescript-eslint": "8.71.2"
+	}
+}

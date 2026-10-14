@@ -1,0 +1,59 @@
+@use "./tokens" as t;
+
+:root {
+	font-family: "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+	font-size: 14px;
+	color: t.$text-primary;
+	background: t.$canvas;
+	font-synthesis: none;
+	text-rendering: optimizeLegibility;
+	color-scheme: dark;
+}
+* {
+	box-sizing: border-box;
+}
+body {
+	margin: 0;
+}
+button,
+input,
+select {
+	font: inherit;
+}
+button {
+	min-height: 32px;
+	padding: 4px 12px;
+	border: 1px solid t.$border;
+	border-radius: 4px;
+	background: t.$surface-elevated;
+	color: t.$text-primary;
+	font-weight: 600;
+	cursor: pointer;
+}
+button:hover:not(:disabled) {
+	background: t.$selected;
+}
+button:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+:focus-visible {
+	outline: 2px solid t.$focus;
+	outline-offset: 2px;
+}
+::selection {
+	background: t.$accent;
+	color: t.$accent-text;
+}
+input[type="range"] {
+	accent-color: t.$accent;
+	cursor: pointer;
+	min-width: 0;
+}
+input:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+[hidden] {
+	display: none !important;
+}
