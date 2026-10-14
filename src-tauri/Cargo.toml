@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Offline gameplay recording workspace"
 license = "GPL-3.0-only"
 edition = "2021"
-rust-version = "1.85"
+rust-version = "1.90"
 
 [lib]
 name = "klipper_lib"
