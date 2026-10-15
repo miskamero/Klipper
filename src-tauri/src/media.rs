@@ -129,8 +129,24 @@ async fn read_bounded(reader: impl AsyncRead + Unpin, limit: u64) -> Result<Vec<
 }
 
 pub async fn probe(executable: &Path, path: &Path) -> Result<MediaInfo, String> {
-    let file_size = tokio::fs::metadata(path)
-        .await
+    let (_cancel, mut cancelled) = tokio::sync::watch::channel(false);
+    probe_cancellable(executable, path, &mut cancelled, Duration::from_secs(30))
+        .await?
+        .ok_or_else(|| "Analysis was superseded.".to_string())
+}
+
+pub(crate) async fn probe_cancellable(
+    executable: &Path,
+    path: &Path,
+    cancelled: &mut tokio::sync::watch::Receiver<bool>,
+    timeout: Duration,
+) -> Result<Option<MediaInfo>, String> {
+    let metadata = tokio::select! {
+        biased;
+        _ = cancelled.wait_for(|value| *value) => return Ok(None),
+        metadata = tokio::fs::metadata(path) => metadata,
+    };
+    let file_size = metadata
         .map_err(|_| "The selected recording is no longer readable.".to_string())?
         .len();
     let mut command = Command::new(executable);
@@ -159,33 +175,45 @@ pub async fn probe(executable: &Path, path: &Path) -> Result<MediaInfo, String> 
         .kill_on_drop(true);
     #[cfg(windows)]
     command.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    if *cancelled.borrow() {
+        return Ok(None);
+    }
     let mut child = command.spawn().map_err(|_| "FFprobe could not start. Install FFmpeg with ffprobe on PATH, then restart Klipper, or provide the portable helper in resources/bin.".to_string())?;
-    let stdout = child.stdout.take().ok_or("FFprobe output unavailable.")?;
-    let stderr = child
-        .stderr
-        .take()
-        .ok_or("FFprobe error output unavailable.")?;
-    let result = tokio::time::timeout(Duration::from_secs(30), async {
-        tokio::try_join!(
-            read_bounded(stdout, 4 * 1024 * 1024),
-            read_bounded(stderr, 64 * 1024),
-            async {
-                child
-                    .wait()
-                    .await
-                    .map_err(|_| "FFprobe process failed.".to_string())
-            }
-        )
-    })
-    .await;
+    let result = {
+        let output = async {
+            let stdout = child.stdout.take().ok_or("FFprobe output unavailable.")?;
+            let stderr = child
+                .stderr
+                .take()
+                .ok_or("FFprobe error output unavailable.")?;
+            tokio::try_join!(
+                read_bounded(stdout, 4 * 1024 * 1024),
+                read_bounded(stderr, 64 * 1024),
+                async {
+                    child
+                        .wait()
+                        .await
+                        .map_err(|_| "FFprobe process failed.".to_string())
+                }
+            )
+        };
+        tokio::select! {
+            biased;
+            _ = cancelled.wait_for(|value| *value) => None,
+            result = tokio::time::timeout(timeout, output) => Some(result),
+        }
+    };
     match result {
-        Ok(Ok((stdout, _stderr, status))) if status.success() => parse(&stdout, file_size),
-        Ok(Ok(_)) => Err("FFprobe could not analyze this recording. The file may be damaged, unsupported or inaccessible. Playback can still be attempted.".into()),
+        Some(Ok(Ok((stdout, _stderr, status)))) if status.success() => parse(&stdout, file_size).map(Some),
+        Some(Ok(Ok(_))) => Err("FFprobe could not analyze this recording. The file may be damaged, unsupported or inaccessible. Playback can still be attempted.".into()),
         other => {
-            let _ = child.kill().await;
-            let _ = child.wait().await;
+            // Keep the worker occupied until termination has been requested and the child reaped.
+            // kill_on_drop is only a fallback, not our normal cancellation mechanism.
+            let _ = child.start_kill();
+            child.wait().await.map_err(|_| "Could not reap the FFprobe process.".to_string())?;
             match other {
-                Ok(Err(error)) => Err(error),
+                None => Ok(None),
+                Some(Ok(Err(error))) => Err(error),
                 _ => Err("FFprobe analysis timed out after 30 seconds. Try another recording.".into()),
             }
         }

@@ -29,7 +29,8 @@ export async function selectRecording(): Promise<Recording | null> {
 		throw new Error("Open the desktop app with npm run desktop to select a local recording.");
 	return invoke("select_recording");
 }
-export function analyzeRecording(id: number): Promise<MediaInfo> {
+// null means superseded or shutting down; genuine inspection failures still reject.
+export function analyzeRecording(id: number): Promise<MediaInfo | null> {
 	return invoke("analyze_recording", { id });
 }
 export function playbackUrl(recording: Recording): string {

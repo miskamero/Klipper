@@ -1,10 +1,10 @@
-use crate::{config, media};
+use crate::{analysis::Analysis, config, media};
 use serde::Serialize;
 use std::{
     path::{Path, PathBuf},
     sync::{
         atomic::{AtomicBool, Ordering},
-        Mutex,
+        Arc, Mutex,
     },
 };
 use tauri::{Manager, State};
@@ -20,7 +20,7 @@ pub struct Recording {
 pub struct RecordingState {
     selected: Mutex<Option<Recording>>,
     picking: AtomicBool,
-    analysis: tokio::sync::Semaphore,
+    pub(crate) analysis: Arc<Analysis>,
 }
 
 impl Default for RecordingState {
@@ -28,7 +28,7 @@ impl Default for RecordingState {
         Self {
             selected: Mutex::new(None),
             picking: AtomicBool::new(false),
-            analysis: tokio::sync::Semaphore::new(1),
+            analysis: Arc::new(Analysis::default()),
         }
     }
 }
@@ -98,6 +98,7 @@ pub async fn select_recording(
         path,
     };
     *selected = Some(recording.clone());
+    state.analysis.supersede();
     Ok(Some(recording))
 }
 
@@ -106,23 +107,24 @@ pub async fn analyze_recording(
     app: tauri::AppHandle,
     state: State<'_, RecordingState>,
     id: u64,
-) -> Result<media::MediaInfo, String> {
-    // Fail fast instead of allowing an unbounded queue of probe processes.
-    let _permit = state.analysis.try_acquire().map_err(|_| {
-        "Another recording is still being analyzed. Retry analysis in a moment.".to_string()
-    })?;
-    let path = {
+) -> Result<Option<media::MediaInfo>, String> {
+    let response = {
         let selected = state
             .selected
             .lock()
             .map_err(|_| "Recording state unavailable.".to_string())?;
-        selected
-            .as_ref()
-            .filter(|value| value.id == id)
-            .map(|value| value.path.clone())
-            .ok_or_else(|| "Select a recording before analyzing it.".to_string())?
+        let Some(recording) = selected.as_ref().filter(|value| value.id == id) else {
+            // Delayed IPC for an older selection is a normal supersession, not a failure.
+            return Ok(None);
+        };
+        // Selection validation and scheduling must be atomic relative to another selection.
+        state
+            .analysis
+            .request(config::ffprobe(&app)?, recording.path.clone())
     };
-    media::probe(&config::ffprobe(&app)?, &path).await
+    response
+        .await
+        .map_err(|_| "Analysis worker stopped unexpectedly.".to_string())?
 }
 
 #[cfg(test)]

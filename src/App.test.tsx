@@ -43,7 +43,111 @@ const info: MediaInfo = {
 	audio: [],
 };
 
+function deferred<T>() {
+	let resolve!: (value: T) => void;
+	let reject!: (error: unknown) => void;
+	const promise = new Promise<T>((finish, fail) => {
+		resolve = finish;
+		reject = fail;
+	});
+	return { promise, resolve, reject };
+}
+
 describe("recording workflow", () => {
+	it.each(["reject", "supersede"])(
+		"ignores an obsolete %s while the new analysis is pending",
+		async (outcome) => {
+			const old = deferred<MediaInfo | null>();
+			const current = deferred<MediaInfo | null>();
+			vi.mocked(selectRecording).mockResolvedValueOnce(first).mockResolvedValueOnce(second);
+			vi.mocked(analyzeRecording)
+				.mockReturnValueOnce(old.promise)
+				.mockReturnValueOnce(current.promise);
+			render(<App />);
+			fireEvent.click(screen.getByRole("button", { name: "Open recording" }));
+			await screen.findByLabelText(first.name);
+			fireEvent.click(screen.getByRole("button", { name: "Open another recording" }));
+			await screen.findByLabelText(second.name);
+			await act(async () => {
+				if (outcome === "reject") old.reject("Obsolete failure");
+				else old.resolve(null);
+			});
+			expect(screen.queryByText("Obsolete failure")).toBeNull();
+			expect(screen.getByText(/Reading container and streams/)).toBeTruthy();
+			await act(async () => current.resolve(info));
+			expect(screen.getByText("H264")).toBeTruthy();
+			expect(analyzeRecording).toHaveBeenNthCalledWith(2, second.id);
+		},
+	);
+
+	it("keeps C's metadata through rapid A to B to C switching and late responses", async () => {
+		const a = deferred<MediaInfo | null>();
+		const b = deferred<MediaInfo | null>();
+		const c = { id: 3, name: "Synthetic C.mp4", path: "/synthetic/c.mp4" };
+		vi.mocked(selectRecording)
+			.mockResolvedValueOnce(first)
+			.mockResolvedValueOnce(second)
+			.mockResolvedValueOnce(c);
+		vi.mocked(analyzeRecording)
+			.mockReturnValueOnce(a.promise)
+			.mockReturnValueOnce(b.promise)
+			.mockResolvedValueOnce({ ...info, videoCodec: "hevc" });
+		render(<App />);
+		fireEvent.click(screen.getByRole("button", { name: "Open recording" }));
+		await screen.findByLabelText(first.name);
+		fireEvent.click(screen.getByRole("button", { name: "Open another recording" }));
+		await screen.findByLabelText(second.name);
+		fireEvent.click(screen.getByRole("button", { name: "Open another recording" }));
+		await screen.findByText("HEVC");
+		await act(async () => {
+			b.reject("Obsolete B failure");
+			a.resolve(info);
+		});
+		expect(screen.getByLabelText(c.name)).toBeTruthy();
+		expect(screen.getByText("HEVC")).toBeTruthy();
+		expect(screen.queryByText("H264")).toBeNull();
+		expect(screen.queryByText("Obsolete B failure")).toBeNull();
+		expect(analyzeRecording).toHaveBeenCalledTimes(3);
+	});
+
+	it("retries a genuine failure without selecting or remounting the player", async () => {
+		vi.mocked(selectRecording).mockResolvedValue(first);
+		vi.mocked(analyzeRecording)
+			.mockRejectedValueOnce("Probe failed")
+			.mockResolvedValueOnce(info);
+		render(<App />);
+		fireEvent.click(screen.getByRole("button", { name: "Open recording" }));
+		await screen.findByText("Probe failed");
+		const player = screen.getByLabelText(first.name);
+		fireEvent.click(screen.getByRole("button", { name: "Retry analysis" }));
+		await screen.findByText("H264");
+		expect(screen.queryByText("Probe failed")).toBeNull();
+		expect(screen.getByLabelText(first.name)).toBe(player);
+		expect(selectRecording).toHaveBeenCalledTimes(1);
+		expect(analyzeRecording).toHaveBeenNthCalledWith(2, first.id);
+	});
+
+	it("does not start inspection when a picker resolves after unmount", async () => {
+		const picker = deferred<typeof first | null>();
+		vi.mocked(selectRecording).mockReturnValue(picker.promise);
+		const { unmount } = render(<App />);
+		fireEvent.click(screen.getByRole("button", { name: "Open recording" }));
+		unmount();
+		await act(async () => picker.resolve(first));
+		expect(analyzeRecording).not.toHaveBeenCalled();
+	});
+
+	it("settles a neutral supersession without showing an error or leaving loading active", async () => {
+		vi.mocked(selectRecording).mockResolvedValue(first);
+		vi.mocked(analyzeRecording).mockResolvedValue(null);
+		render(<App />);
+		fireEvent.click(screen.getByRole("button", { name: "Open recording" }));
+		await screen.findByLabelText(first.name);
+		await waitFor(() => expect(screen.queryByText(/Reading container and streams/)).toBeNull());
+		expect(screen.queryByRole("alert")).toBeNull();
+		expect(screen.queryByRole("button", { name: "Retry analysis" })).toBeNull();
+	});
+
 	it("keeps the empty state when the picker is canceled", async () => {
 		vi.mocked(selectRecording).mockResolvedValue(null);
 

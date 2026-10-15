@@ -26,12 +26,22 @@ export default function App() {
 	const inspector = useInspectorWidth(workspace);
 	const generation = useRef(0);
 	const picking = useRef(false);
+	const mounted = useRef(false);
+
+	useEffect(() => {
+		mounted.current = true;
+		return () => {
+			mounted.current = false;
+			generation.current += 1;
+		};
+	}, []);
 
 	useEffect(() => {
 		if (details.current) details.current.scrollTop = 0;
 	}, [recording?.id]);
 
 	async function inspect(selected: Recording) {
+		if (!mounted.current) return;
 		const request = ++generation.current;
 		setInfo(null);
 		setAnalysisError("");
@@ -47,7 +57,7 @@ export default function App() {
 	}
 
 	async function open() {
-		if (picking.current) return;
+		if (!mounted.current || picking.current) return;
 		picking.current = true;
 		setSelecting(true);
 		setSelectionError("");
@@ -55,13 +65,13 @@ export default function App() {
 		try {
 			selected = await selectRecording();
 		} catch (error) {
-			setSelectionError(errorMessage(error));
+			if (mounted.current) setSelectionError(errorMessage(error));
 			return;
 		} finally {
 			picking.current = false;
-			setSelecting(false);
+			if (mounted.current) setSelecting(false);
 		}
-		if (!selected) return;
+		if (!mounted.current || !selected) return;
 		setRecording(selected);
 		await inspect(selected);
 	}

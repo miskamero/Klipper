@@ -16,8 +16,8 @@
 		"desktop": "tauri dev",
 		"desktop:build": "tauri build --no-bundle",
 		"desktop:debug": "tauri build --debug --no-bundle",
-		"format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,scss,css,json}\" README.md NOTICE.md index.html package.json tsconfig.json vite.config.ts eslint.config.mjs .prettierrc.json \"src-tauri/tauri.conf.json\" \"src-tauri/capabilities/*.json\" \"tooling/eslint/*.{js,json}\"",
-		"format:check": "prettier --check \"src/**/*.{ts,tsx,js,jsx,scss,css,json}\" README.md NOTICE.md index.html package.json tsconfig.json vite.config.ts eslint.config.mjs .prettierrc.json \"src-tauri/tauri.conf.json\" \"src-tauri/capabilities/*.json\" \"tooling/eslint/*.{js,json}\"",
+		"format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,scss,css,json}\" README.md index.html package.json tsconfig.json vite.config.ts eslint.config.mjs .prettierrc.json \"src-tauri/tauri.conf.json\" \"src-tauri/capabilities/*.json\" \"tooling/eslint/*.{js,json}\"",
+		"format:check": "prettier --check \"src/**/*.{ts,tsx,js,jsx,scss,css,json}\" README.md index.html package.json tsconfig.json vite.config.ts eslint.config.mjs .prettierrc.json \"src-tauri/tauri.conf.json\" \"src-tauri/capabilities/*.json\" \"tooling/eslint/*.{js,json}\"",
 		"lint": "eslint src vite.config.ts eslint.config.mjs tooling/eslint/index.js --max-warnings 0"
 	},
 	"dependencies": {
