@@ -1,0 +1,7 @@
+{
+	"identifier": "playback-overlay",
+	"description": "Owned native-video controls with no filesystem, file picker or window-management access.",
+	"windows": ["player-controls"],
+	"platforms": ["windows"],
+	"permissions": ["playback-overlay", "core:event:allow-listen", "core:event:allow-unlisten"]
+}

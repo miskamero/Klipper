@@ -103,7 +103,7 @@ describe("recording workflow", () => {
 			b.reject("Obsolete B failure");
 			a.resolve(info);
 		});
-		expect(screen.getByLabelText(c.name)).toBeTruthy();
+		expect(await screen.findByLabelText(c.name)).toBeTruthy();
 		expect(screen.getByText("HEVC")).toBeTruthy();
 		expect(screen.queryByText("H264")).toBeNull();
 		expect(screen.queryByText("Obsolete B failure")).toBeNull();
@@ -118,7 +118,7 @@ describe("recording workflow", () => {
 		render(<App />);
 		fireEvent.click(screen.getByRole("button", { name: "Open recording" }));
 		await screen.findByText("Probe failed");
-		const player = screen.getByLabelText(first.name);
+		const player = await screen.findByLabelText(first.name);
 		fireEvent.click(screen.getByRole("button", { name: "Retry analysis" }));
 		await screen.findByText("H264");
 		expect(screen.queryByText("Probe failed")).toBeNull();
@@ -177,13 +177,15 @@ describe("recording workflow", () => {
 		fireEvent.click(screen.getByRole("button", { name: /Open recording/ }));
 
 		expect(await screen.findByText("FFprobe missing")).toBeTruthy();
-		expect(screen.getByLabelText(first.name).getAttribute("src")).toContain("synthetic-1");
+		expect((await screen.findByLabelText(first.name)).getAttribute("src")).toContain(
+			"synthetic-1",
+		);
 
 		fireEvent.click(screen.getByRole("button", { name: /Open another/ }));
 
 		expect(await screen.findByText("H264")).toBeTruthy();
 		expect(screen.queryByText("FFprobe missing")).toBeNull();
-		expect(screen.getByLabelText(second.name)).toBeTruthy();
+		expect(await screen.findByLabelText(second.name)).toBeTruthy();
 	});
 
 	it("discards analysis from the previous recording after switching", async () => {

@@ -4,7 +4,15 @@ import styles from "./Player.module.scss";
 
 const playbackRates = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 3];
 
-export default function Player({ url, name }: { url: string; name: string }) {
+export default function Player({
+	url,
+	name,
+	hevc = false,
+}: {
+	url: string;
+	name: string;
+	hevc?: boolean;
+}) {
 	const videoRef = useRef<HTMLVideoElement>(null);
 	const playerRef = useRef<HTMLDivElement>(null);
 	const [status, setStatus] = useState("Loading recording...");
@@ -230,6 +238,12 @@ export default function Player({ url, name }: { url: string; name: string }) {
 			{rateError && (
 				<p className={styles.controlError} role="alert">
 					{rateError}
+				</p>
+			)}
+			{hevc && (
+				<p className={styles.controlError} role="status">
+					System playback: HEVC support depends on this platform's codecs. If audio plays
+					with black video, use Klipper's Windows native player with npm run desktop.
 				</p>
 			)}
 		</div>

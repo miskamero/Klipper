@@ -28,7 +28,7 @@
 			"csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self' asset: http://asset.localhost; connect-src ipc: http://ipc.localhost; object-src 'none'; frame-src 'none'; base-uri 'self'; form-action 'none'",
 			"devCsp": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self' asset: http://asset.localhost; connect-src ipc: http://ipc.localhost ws://127.0.0.1:1420 http://127.0.0.1:1420; object-src 'none'; frame-src 'none'; base-uri 'self'; form-action 'none'",
 			"assetProtocol": { "enable": true, "scope": [] },
-			"capabilities": ["main"]
+			"capabilities": ["main", "native-playback", "playback-overlay"]
 		}
 	},
 	"bundle": { "active": false, "icon": ["icons/icon.ico", "icons/icon.png"] }

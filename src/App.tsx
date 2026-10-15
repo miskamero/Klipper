@@ -1,12 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import Inspector from "./components/Inspector";
 import InspectorResize, { useInspectorWidth } from "./components/InspectorResize";
-import Player from "./components/Player";
+import RecordingPlayer from "./components/RecordingPlayer";
 import TitleBar from "./components/TitleBar";
 import {
 	analyzeRecording,
 	errorMessage,
-	playbackUrl,
 	selectRecording,
 	type MediaInfo,
 	type Recording,
@@ -21,6 +20,7 @@ export default function App() {
 	const [selectionError, setSelectionError] = useState("");
 	const [analysisError, setAnalysisError] = useState("");
 	const [inspectorOpen, setInspectorOpen] = useState(true);
+	const [videoFullscreen, setVideoFullscreen] = useState(false);
 	const workspace = useRef<HTMLDivElement>(null);
 	const details = useRef<HTMLDivElement>(null);
 	const inspector = useInspectorWidth(workspace);
@@ -77,7 +77,7 @@ export default function App() {
 	}
 
 	return (
-		<div className={styles.app}>
+		<div className={`${styles.app} ${videoFullscreen ? styles.videoFullscreen : ""}`}>
 			<TitleBar
 				selecting={selecting}
 				hasRecording={!!recording}
@@ -102,10 +102,12 @@ export default function App() {
 				>
 					<section className={styles.preview} aria-label="Playback">
 						{recording ? (
-							<Player
+							<RecordingPlayer
 								key={recording.id}
-								url={playbackUrl(recording)}
-								name={recording.name}
+								recording={recording}
+								info={info}
+								selecting={selecting}
+								onFullscreenChange={setVideoFullscreen}
 							/>
 						) : (
 							<div className={styles.empty}>

@@ -12,6 +12,9 @@
 * {
 	box-sizing: border-box;
 }
+:root[data-controls-overlay="true"] {
+	background: transparent;
+}
 body {
 	margin: 0;
 }

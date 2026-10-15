@@ -98,6 +98,16 @@
 	background: t.$panel;
 	overflow-wrap: anywhere;
 }
+.videoFullscreen {
+	> header,
+	.details,
+	.resize {
+		display: none;
+	}
+	.workspace {
+		grid-template-columns: minmax(0, 1fr) !important;
+	}
+}
 @media (max-width: 960px) {
 	.app {
 		height: auto;

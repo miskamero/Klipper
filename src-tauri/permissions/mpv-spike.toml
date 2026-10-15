@@ -1,0 +1,9 @@
+[[permission]]
+identifier = "mpv-spike"
+description = "Selected-recording playback controls and bounded native video surface for Windows development. No arbitrary commands or file paths."
+commands.allow = ["mpv_control", "mpv_surface", "mpv_overlay"]
+
+[[permission]]
+identifier = "playback-overlay"
+description = "Owned fullscreen controls: selected-recording transport and controls lifecycle only. No file selection, paths or surface access."
+commands.allow = ["mpv_control", "mpv_overlay"]

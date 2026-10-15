@@ -33,6 +33,25 @@ impl Default for RecordingState {
     }
 }
 
+#[cfg(all(windows, feature = "mpv-spike"))]
+impl RecordingState {
+    pub(crate) fn with_selected<T>(
+        &self,
+        id: u64,
+        action: impl FnOnce(&Path) -> Result<T, String>,
+    ) -> Result<T, String> {
+        let selected = self
+            .selected
+            .lock()
+            .map_err(|_| "Recording state unavailable")?;
+        let recording = selected
+            .as_ref()
+            .filter(|recording| recording.id == id)
+            .ok_or("Recording selection has changed")?;
+        action(&recording.path)
+    }
+}
+
 fn validate_file(path: &Path) -> Result<PathBuf, String> {
     let path = path
         .canonicalize()

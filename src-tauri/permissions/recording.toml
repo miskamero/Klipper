@@ -7,3 +7,8 @@ commands.allow = ["select_recording"]
 identifier = "recording-analyze"
 description = "Analyze the current user-selected recording by opaque ID."
 commands.allow = ["analyze_recording"]
+
+[[permission]]
+identifier = "playback-backend"
+description = "Report the available playback engine without accepting paths or executable names."
+commands.allow = ["playback_backend"]

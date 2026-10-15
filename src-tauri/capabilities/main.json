@@ -6,6 +6,7 @@
 	"permissions": [
 		"recording-select",
 		"recording-analyze",
+		"playback-backend",
 		"core:window:allow-minimize",
 		"core:window:allow-toggle-maximize",
 		"core:window:allow-close",
