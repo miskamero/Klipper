@@ -6,6 +6,7 @@ mod scan;
 #[cfg(test)]
 #[path = "../../tests/library/mod.rs"]
 mod tests;
+pub(crate) mod thumbnails;
 pub use commands::*;
 
 use crate::analysis::Analysis;
@@ -55,6 +56,7 @@ pub struct Library {
     db: Arc<Mutex<db::Db>>,
     scan: Mutex<ScanState>,
     idle: watch::Sender<bool>,
+    pub(crate) thumbnails: Arc<thumbnails::Thumbnails>,
 }
 pub struct LibraryState(pub Result<Arc<Library>, String>);
 
@@ -73,7 +75,7 @@ pub fn now_ms() -> i64 {
 }
 
 impl Library {
-    pub fn open(path: &Path) -> Result<Arc<Self>, String> {
+    pub fn open(path: &Path, cache: &Path) -> Result<Arc<Self>, String> {
         Ok(Arc::new(Self {
             db: Arc::new(Mutex::new(db::Db::open(path)?)),
             scan: Mutex::new(ScanState {
@@ -82,6 +84,7 @@ impl Library {
                 stopped: false,
             }),
             idle: watch::channel(true).0,
+            thumbnails: thumbnails::Thumbnails::new(cache),
         }))
     }
 
@@ -113,11 +116,13 @@ impl Library {
     pub fn stop(&self, analysis: &Analysis) {
         self.scan.lock().unwrap().stopped = true;
         self.cancel(analysis);
+        self.thumbnails.stop(analysis);
     }
     pub async fn shutdown(&self, analysis: &Analysis) {
         let mut idle = self.idle.subscribe();
         self.stop(analysis);
         let _ = idle.wait_for(|value| *value).await;
+        self.thumbnails.shutdown().await;
     }
 
     pub async fn start(

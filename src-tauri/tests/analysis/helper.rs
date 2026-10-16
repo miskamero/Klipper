@@ -2,7 +2,9 @@
 use std::{fs, io::Write, path::PathBuf, thread, time::Duration};
 
 fn main() {
-    let input = PathBuf::from(std::env::args_os().last().unwrap());
+    let args:Vec<_>=std::env::args_os().collect();
+    let input=PathBuf::from(args.iter().position(|a| a=="-i").and_then(|i| args.get(i+1))
+        .or_else(|| args.last()).unwrap());
     let mode = input.file_stem().unwrap().to_str().unwrap();
     let mut options = fs::OpenOptions::new();
     options.create(true).write(true).truncate(false);
@@ -47,6 +49,8 @@ fn main() {
             .write_all(&vec![b'x'; 4 * 1024 * 1024 + 1])
             .unwrap();
         thread::sleep(Duration::from_secs(60));
+    } else if mode=="jpeg" {
+        std::io::stdout().write_all(&[255,216,255,217]).unwrap();
     } else {
         println!("{{\"format\":{{\"format_name\":\"{mode}\"}},\"streams\":[]}}");
     }

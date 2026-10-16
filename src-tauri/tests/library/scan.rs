@@ -32,7 +32,11 @@ fn helper(directory: &Path) -> PathBuf {
 async fn actual_background_scan_cancels_recovers_and_reuses_completed_metadata() {
     let (temp, db, root) = setup();
     drop(db);
-    let library = Library::open(&temp.path().join("library.sqlite3")).unwrap();
+    let library = Library::open(
+        &temp.path().join("library.sqlite3"),
+        &temp.path().join("cache"),
+    )
+    .unwrap();
     let analysis = Arc::new(Analysis::default());
     let executable = helper(temp.path());
     let file = fixture(&root, "slow-cancel.mp4");
@@ -103,7 +107,11 @@ async fn unavailable_root_fails_without_losing_recording_history() {
     db.discover(root.id, 1, &file).unwrap();
     drop(db);
     fs::rename(&root.path, temp.path().join("moved-root")).unwrap();
-    let library = Library::open(&temp.path().join("library.sqlite3")).unwrap();
+    let library = Library::open(
+        &temp.path().join("library.sqlite3"),
+        &temp.path().join("cache"),
+    )
+    .unwrap();
     let analysis = Arc::new(Analysis::default());
     library
         .start(root.id, temp.path().join("unused-helper"), analysis.clone())

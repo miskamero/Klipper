@@ -9,7 +9,7 @@ use crate::{
     media::MediaInfo,
 };
 use serde::Serialize;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use tauri::{Manager, State};
 use tauri_plugin_dialog::DialogExt;
 
@@ -122,40 +122,8 @@ pub async fn library_open(
     // Only IDs enter IPC. Paths come from SQLite and are reauthorized against a selected root.
     let (path, info) = library
         .database(move |db| {
-            let candidates = db.candidates(file_id)?;
-            let mut last_error = "Recording has no remaining indexed folder.".to_string();
-            for (path, root) in candidates {
-                let validated = files::within(
-                    Path::new(&path),
-                    Path::new(&root.path),
-                    root.identity.as_deref(),
-                )
-                .and_then(|path| files::describe(&path));
-                match validated {
-                    Ok(file) => {
-                        let known: Option<String> = db
-                            .connection
-                            .query_row(
-                                "SELECT identity FROM recordings WHERE id=?1",
-                                [file_id],
-                                |r| r.get(0),
-                            )
-                            .map_err(|e| e.to_string())?;
-                        if known != file.identity {
-                            return Err(
-                                "This path now refers to a different file. Rescan its folder."
-                                    .into(),
-                            );
-                        }
-                        return Ok((PathBuf::from(&file.path), db.cached(file_id, &file)?));
-                    }
-                    Err(error) => {
-                        db.unavailable(&path, matches!(Path::new(&path).try_exists(), Ok(false)))?;
-                        last_error = error;
-                    }
-                }
-            }
-            Err(format!("Recording could not be opened: {last_error}"))
+            let (file, _root) = db.resolve_file(file_id)?;
+            Ok((PathBuf::from(&file.path), db.cached(file_id, &file)?))
         })
         .await?;
     // Use exactly the same temporary selection IDs and asset grants as the native file picker.
@@ -169,5 +137,10 @@ pub async fn library_open(
 pub fn initialize(app: &tauri::AppHandle) -> Result<std::sync::Arc<super::Library>, String> {
     let directory = app.path().app_data_dir().map_err(|e| e.to_string())?;
     std::fs::create_dir_all(&directory).map_err(|e| e.to_string())?;
-    super::Library::open(&directory.join("library.sqlite3"))
+    let cache = app
+        .path()
+        .app_cache_dir()
+        .map_err(|e| e.to_string())?
+        .join("thumbnails");
+    super::Library::open(&directory.join("library.sqlite3"), &cache)
 }

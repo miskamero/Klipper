@@ -17,6 +17,39 @@ pub struct Db {
 }
 
 impl Db {
+    // Shared read-only authorization for playback and thumbnails. No caller supplies a path.
+    pub fn resolve_file(&mut self, id: i64) -> Result<(File, Root)> {
+        let mut last_error = "Recording has no remaining indexed folder.".to_string();
+        for (path, root) in self.candidates(id)? {
+            let validated = super::files::within(
+                Path::new(&path),
+                Path::new(&root.path),
+                root.identity.as_deref(),
+            )
+            .and_then(|p| super::files::describe(&p));
+            match validated {
+                Ok(file) => {
+                    let known: Option<String> = self
+                        .connection
+                        .query_row("SELECT identity FROM recordings WHERE id=?1", [id], |r| {
+                            r.get(0)
+                        })
+                        .map_err(error)?;
+                    if known != file.identity {
+                        return Err(
+                            "This path now refers to a different file. Rescan its folder.".into(),
+                        );
+                    }
+                    return Ok((file, root));
+                }
+                Err(message) => {
+                    self.unavailable(&path, matches!(Path::new(&path).try_exists(), Ok(false)))?;
+                    last_error = message;
+                }
+            }
+        }
+        Err(format!("Recording could not be opened: {last_error}"))
+    }
     pub fn open(path: &Path) -> Result<Self> {
         let mut connection = Connection::open(path).map_err(error)?;
         connection

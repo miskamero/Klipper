@@ -1,9 +1,9 @@
+use crate::media_process::capture;
+#[cfg(test)]
+use crate::media_process::read_bounded;
 use serde::{Deserialize, Serialize};
-use std::{collections::BTreeMap, path::Path, process::Stdio, time::Duration};
-use tokio::{
-    io::{AsyncRead, AsyncReadExt},
-    process::Command,
-};
+use std::{collections::BTreeMap, path::Path, time::Duration};
+use tokio::process::Command;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -27,6 +27,12 @@ pub struct MediaInfo {
     file_size: u64,
     bitrate: Option<f64>,
     audio: Vec<AudioStream>,
+}
+
+impl MediaInfo {
+    pub(crate) fn duration(&self) -> Option<f64> {
+        self.duration
+    }
 }
 
 #[derive(Default, Deserialize)]
@@ -115,19 +121,6 @@ pub fn parse(bytes: &[u8], file_size: u64) -> Result<MediaInfo, String> {
     Ok(info)
 }
 
-async fn read_bounded(reader: impl AsyncRead + Unpin, limit: u64) -> Result<Vec<u8>, String> {
-    let mut bytes = Vec::new();
-    reader
-        .take(limit + 1)
-        .read_to_end(&mut bytes)
-        .await
-        .map_err(|_| "Could not read FFprobe output.".to_string())?;
-    if bytes.len() as u64 > limit {
-        return Err("FFprobe metadata exceeded the safety limit.".into());
-    }
-    Ok(bytes)
-}
-
 pub async fn probe(executable: &Path, path: &Path) -> Result<MediaInfo, String> {
     let (_cancel, mut cancelled) = tokio::sync::watch::channel(false);
     probe_cancellable(executable, path, &mut cancelled, Duration::from_secs(30))
@@ -168,55 +161,20 @@ pub(crate) async fn probe_cancellable(
             "json",
             "-i",
         ])
-        .arg(path)
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .kill_on_drop(true);
-    #[cfg(windows)]
-    command.creation_flags(0x08000000); // CREATE_NO_WINDOW
-    if *cancelled.borrow() {
-        return Ok(None);
-    }
-    let mut child = command.spawn().map_err(|_| "FFprobe could not start. Install FFmpeg with ffprobe on PATH, then restart Klipper, or provide the portable helper in resources/bin.".to_string())?;
-    let result = {
-        let output = async {
-            let stdout = child.stdout.take().ok_or("FFprobe output unavailable.")?;
-            let stderr = child
-                .stderr
-                .take()
-                .ok_or("FFprobe error output unavailable.")?;
-            tokio::try_join!(
-                read_bounded(stdout, 4 * 1024 * 1024),
-                read_bounded(stderr, 64 * 1024),
-                async {
-                    child
-                        .wait()
-                        .await
-                        .map_err(|_| "FFprobe process failed.".to_string())
-                }
-            )
-        };
-        tokio::select! {
-            biased;
-            _ = cancelled.wait_for(|value| *value) => None,
-            result = tokio::time::timeout(timeout, output) => Some(result),
-        }
-    };
-    match result {
-        Some(Ok(Ok((stdout, _stderr, status)))) if status.success() => parse(&stdout, file_size).map(Some),
-        Some(Ok(Ok(_))) => Err("FFprobe could not analyze this recording. The file may be damaged, unsupported or inaccessible. Playback can still be attempted.".into()),
-        other => {
-            // Keep the worker occupied until termination has been requested and the child reaped.
-            // kill_on_drop is only a fallback, not our normal cancellation mechanism.
-            let _ = child.start_kill();
-            child.wait().await.map_err(|_| "Could not reap the FFprobe process.".to_string())?;
-            match other {
-                None => Ok(None),
-                Some(Ok(Err(error))) => Err(error),
-                _ => Err("FFprobe analysis timed out after 30 seconds. Try another recording.".into()),
-            }
-        }
+        .arg(path);
+    let output = capture(
+        &mut command,
+        cancelled,
+        timeout,
+        4 * 1024 * 1024,
+        "FFprobe",
+        false,
+    )
+    .await?;
+    match output {
+        Some((stdout,status)) if status.success() => parse(&stdout,file_size).map(Some),
+        Some(_) => Err("FFprobe could not analyze this recording. The file may be damaged, unsupported or inaccessible. Playback can still be attempted.".into()),
+        None => Ok(None),
     }
 }
 

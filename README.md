@@ -2,7 +2,7 @@
 
 Klipper is a free, open-source desktop application for playing and inspecting local gameplay recordings. It opens your recordings read-only: no account, no uploads, and no telemetry.
 
-The project is still in development. Local folder discovery, a searchable library, playback, and media inspection are working. Editing tools, compression, thumbnails, and provider metadata imports are not yet implemented.
+The project is still in development. Local folder discovery, a searchable library with video previews, playback, and media inspection are working. Editing tools, compression, and provider metadata imports are not yet implemented.
 
 ## Features
 
@@ -12,6 +12,9 @@ The project is still in development. Local folder discovery, a searchable librar
 - Search filenames and paths, filter by folder, status or codec, and sort by date, name, duration or size.
 - Rescan incrementally, cancel background indexing, or remove folders without deleting recordings.
 - Keep library metadata in a local SQLite database in Klipper's platform application-data directory.
+- Generate real frame previews only for visible recordings, with cancellable background work.
+
+Previews use FFmpeg and are cached separately in the platform application-cache directory, under thumbnails/previews-v1.sqlite3. JPEGs fit within 320×180 pixels; the cache retains at most 2,000 images and 64 MiB of image data (an 80 MiB database-file ceiling, plus temporary SQLite journal space). Changed recordings invalidate previews. Clearing this cache is safe while Klipper is closed.
 
 Discovery skips symbolic links and Windows reparse points. Unchanged recordings reuse cached inspection results; missing files retain their historical metadata. Filesystem identities help recognize moves within selected folders and hard links where supported; uncertain matches remain separate. Folders are only scanned after you add or explicitly rescan them.
 
@@ -43,7 +46,7 @@ Klipper currently targets **Windows 10 and 11 (x64)** and is run from source. A 
 - **Rust:** current stable Windows MSVC toolchain; the declared minimum is Rust 1.90.
 - **Visual Studio 2022 C++ Build Tools:** _Desktop development with C++_ and the Windows SDK.
 - **Microsoft Edge WebView2 Runtime.**
-- **FFprobe** (from FFmpeg) available on `PATH` for recording inspection.
+- **FFmpeg and FFprobe** available on `PATH` for thumbnail extraction and recording inspection.
 - **libmpv for Windows x64**, installed locally as described below.
 
 See [Tauri's Windows prerequisites](https://v2.tauri.app/start/prerequisites/#windows) for the development environment.
@@ -112,6 +115,8 @@ npm run desktop:build
 ```
 
 The executable is written to `src-tauri/target/release/klipper.exe`. Copy the verified `native-deps/windows-x64/libmpv-2.dll` beside that executable before running it. The build does not copy the DLL automatically. Recording inspection still needs FFprobe on `PATH`; WebView2 remains an OS prerequisite.
+
+Thumbnail extraction also needs FFmpeg. Portable packaging should include vetted FFmpeg and FFprobe helpers under resources/bin, with any DLLs required by the chosen builds and their corresponding license/source materials. The development build falls back to PATH; no binaries are downloaded at runtime.
 
 **A successful build is not yet a complete portable distribution**: dependency bundling, clean-machine validation, and the necessary third-party license and source materials are still pending. End users of a future packaged release will not need Node.js, Rust, or Python.
 

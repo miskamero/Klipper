@@ -246,3 +246,69 @@ async fn cancelling_library_work_never_cancels_foreground_inspection() {
     analysis.shutdown().await;
     assert!(!directory.path().join("overlap").exists());
 }
+
+#[tokio::test]
+async fn thumbnail_cancellation_and_preemption_reap_and_never_overlap_probe() {
+    let directory = tempfile::tempdir().unwrap();
+    let executable = helper(directory.path());
+    let analysis = Arc::new(Analysis::default());
+    for foreground in [false, true] {
+        let path = fixture(
+            directory.path(),
+            if foreground {
+                "slow-preempt"
+            } else {
+                "slow-cancel"
+            },
+        );
+        let mut thumbnail_reply = loop {
+            if let Some(reply) =
+                analysis.try_thumbnail(executable.clone(), path.clone(), 0.0, "thumbnail".into())
+            {
+                break reply;
+            }
+            tokio::task::yield_now().await;
+        };
+        let pid = started(&path).await;
+        analysis.cancel_thumbnail("wrong-owner");
+        analysis.cancel_background();
+        assert!(thumbnail_reply.try_recv().is_err());
+        let probe = if foreground {
+            Some(analysis.request(executable.clone(), fixture(directory.path(), "recovery")))
+        } else {
+            analysis.cancel_thumbnail("thumbnail");
+            None
+        };
+        assert!(
+            tokio::time::timeout(Duration::from_secs(10), thumbnail_reply)
+                .await
+                .unwrap()
+                .unwrap()
+                .unwrap()
+                .is_none()
+        );
+        assert_reaped(pid);
+        if let Some(probe) = probe {
+            assert!(response(probe).await.unwrap().is_some());
+        }
+    }
+    let oversized = fixture(directory.path(), "oversized");
+    let request = loop {
+        if let Some(reply) = analysis.try_thumbnail(
+            executable.clone(),
+            oversized.clone(),
+            0.0,
+            "oversized".into(),
+        ) {
+            break reply;
+        }
+        tokio::task::yield_now().await;
+    };
+    let pid = started(&oversized).await;
+    assert!(request.await.unwrap().unwrap_err().contains("safety limit"));
+    assert_reaped(pid);
+    let probe = analysis.request(executable, fixture(directory.path(), "recovery"));
+    assert!(response(probe).await.unwrap().is_some());
+    analysis.shutdown().await;
+    assert!(!directory.path().join("overlap").exists());
+}

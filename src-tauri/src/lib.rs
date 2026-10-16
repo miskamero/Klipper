@@ -3,6 +3,7 @@ mod commands;
 mod config;
 mod library;
 pub mod media;
+mod media_process;
 #[cfg(windows)]
 mod native_player;
 mod playback;
@@ -43,7 +44,9 @@ pub fn run() {
         library::library_rescan,
         library::library_cancel,
         library::library_remove_folder,
-        library::library_open
+        library::library_open,
+        library::thumbnails::library_thumbnail,
+        library::thumbnails::library_thumbnail_cancel
     ]);
     #[cfg(windows)]
     let builder = builder.invoke_handler(tauri::generate_handler![
@@ -59,7 +62,9 @@ pub fn run() {
         library::library_rescan,
         library::library_cancel,
         library::library_remove_folder,
-        library::library_open
+        library::library_open,
+        library::thumbnails::library_thumbnail,
+        library::thumbnails::library_thumbnail_cancel
     ]);
     builder
         .build(tauri::generate_context!())
@@ -72,8 +77,10 @@ pub fn run() {
                 if let Some(library) = &library {
                     library.stop(&analysis);
                 }
-                let mut needs_cleanup =
-                    !analysis.is_idle() || library.as_ref().is_some_and(|l| !l.is_idle());
+                let mut needs_cleanup = !analysis.is_idle()
+                    || library
+                        .as_ref()
+                        .is_some_and(|l| !l.is_idle() || !l.thumbnails.is_idle());
                 #[cfg(windows)]
                 {
                     needs_cleanup |= app

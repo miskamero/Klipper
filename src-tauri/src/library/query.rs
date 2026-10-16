@@ -27,6 +27,7 @@ pub struct RecordingRow {
     pub path: String,
     pub size: i64,
     pub modified_ms: Option<i64>,
+    pub revision: Option<String>,
     pub status: String,
     pub availability: String,
     pub duration: Option<f64>,
@@ -70,7 +71,7 @@ pub fn query(connection: &Connection, query: Query) -> Result<Page, String> {
             .replace('_', "\\_")
     );
     let cte = "WITH candidates AS (
-        SELECT f.id,l.name,l.path,f.size,f.modified_ms,f.status,e.availability,f.error,
+        SELECT f.id,l.name,l.path,f.size,f.modified_ms,f.modified_ns,f.status,e.availability,f.error,
         CASE WHEN f.status='ready' THEN m.duration END AS duration,
         CASE WHEN f.status='ready' THEN m.video_codec END AS video_codec,
         CASE WHEN f.status='ready' THEN m.width END AS width,
@@ -97,7 +98,7 @@ pub fn query(connection: &Connection, query: Query) -> Result<Page, String> {
     let mut statement = connection
         .prepare(&format!(
             "{cte} SELECT id,name,path,size,modified_ms,status,availability,
-        duration,video_codec,width,height,frame_rate,audio_count,error FROM filtered
+        duration,video_codec,width,height,frame_rate,audio_count,error,modified_ns FROM filtered
         ORDER BY {sort} {direction},id ASC LIMIT 40 OFFSET ?5"
         ))
         .map_err(|e| e.to_string())?;
@@ -117,6 +118,7 @@ pub fn query(connection: &Connection, query: Query) -> Result<Page, String> {
                     path: r.get(2)?,
                     size: r.get(3)?,
                     modified_ms: r.get(4)?,
+                    revision: r.get(14)?,
                     status: r.get(5)?,
                     availability: r.get(6)?,
                     duration: r.get(7)?,

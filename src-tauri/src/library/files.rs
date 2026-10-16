@@ -9,7 +9,7 @@ use std::{
 };
 use tokio::sync::mpsc::Sender;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct File {
     pub path: String,
     pub name: String,

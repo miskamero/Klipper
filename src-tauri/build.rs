@@ -15,6 +15,8 @@ fn main() {
                 "library_cancel",
                 "library_remove_folder",
                 "library_open",
+                "library_thumbnail",
+                "library_thumbnail_cancel",
             ]
         } else {
             &[
@@ -28,6 +30,8 @@ fn main() {
                 "library_cancel",
                 "library_remove_folder",
                 "library_open",
+                "library_thumbnail",
+                "library_thumbnail_cancel",
             ]
         };
     tauri_build::try_build(

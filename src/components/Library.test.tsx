@@ -3,6 +3,8 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import Library from "./Library";
 import * as service from "../services/library";
+import { thumbnails } from "../services/thumbnails";
+vi.mock("../services/thumbnails", () => ({ thumbnails: { request: vi.fn() } }));
 
 vi.mock("@tauri-apps/api/core", () => ({ isTauri: () => true, invoke: vi.fn() }));
 vi.mock("../services/library", async (original) => ({
@@ -60,6 +62,29 @@ beforeEach(() => {
 afterEach(() => {
 	cleanup();
 	vi.resetAllMocks();
+	vi.unstubAllGlobals();
+});
+
+it("cancels old-page thumbnail work immediately while the next page is still loading", async () => {
+	const cancel = vi.fn();
+	vi.mocked(thumbnails.request).mockReturnValue(cancel);
+	vi.stubGlobal(
+		"IntersectionObserver",
+		class {
+			constructor(private callback: (entries: { isIntersecting: boolean }[]) => void) {}
+			observe() {
+				this.callback([{ isIntersecting: true }]);
+			}
+			disconnect() {}
+		},
+	);
+	render(<Library active selecting={false} onOpen={vi.fn()} />);
+	await screen.findByRole("button", { name: "Play " + item.name });
+	await waitFor(() => expect(thumbnails.request).toHaveBeenCalledOnce());
+	vi.mocked(service.queryLibrary).mockReturnValue(new Promise(() => {}));
+	fireEvent.click(screen.getByRole("button", { name: "Next" }));
+	await waitFor(() => expect(cancel).toHaveBeenCalledOnce());
+	expect(screen.getByRole("button", { name: "Play " + item.name })).toBeTruthy();
 });
 
 it("opens a persistent library ID and retains filters and scroll across workspaces", async () => {

@@ -15,6 +15,7 @@ import {
 	type LibraryStatus,
 } from "../services/library";
 import styles from "./Library.module.scss";
+import Thumbnail from "./Thumbnail";
 
 const initialQuery: LibraryQuery = {
 	search: "",
@@ -37,6 +38,7 @@ export default function Library({
 }) {
 	const [status, setStatus] = useState<LibraryStatus | null>(null);
 	const [page, setPage] = useState<LibraryPage>({ items: [], total: 0, limit: 40 });
+	const [loadedQuery, setLoadedQuery] = useState("");
 	const [query, setQuery] = useState(initialQuery);
 	const [search, setSearch] = useState("");
 	const [revision, setRevision] = useState(0);
@@ -78,6 +80,7 @@ export default function Library({
 				if (!disposed) {
 					setStatus(overview);
 					setPage(result);
+					setLoadedQuery(JSON.stringify(query));
 					delay = scanActive(overview.progress.phase) ? 600 : 2500;
 					if (query.offset > 0 && query.offset >= result.total) {
 						setQuery((previous) => ({ ...previous, offset: 0 }));
@@ -327,9 +330,11 @@ export default function Library({
 									aria-label={"Play " + item.name}
 									onClick={() => onOpen(item.id)}
 								>
-									<span className={styles.play} aria-hidden="true">
-										▷
-									</span>
+									<Thumbnail
+										recording={item}
+										active={active && loadedQuery === JSON.stringify(query)}
+										root={list}
+									/>
 									<span className={styles.identity}>
 										<strong>{item.name}</strong>
 										<span className={styles.path}>{item.path}</span>

@@ -1,0 +1,35 @@
+@use "../styles/tokens" as t;
+
+.frame {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 144px;
+	height: 81px;
+	flex: 0 0 144px;
+	overflow: hidden;
+	background: t.$video-stage;
+	border: 1px solid t.$border;
+	border-radius: 4px;
+	img {
+		width: 100%;
+		height: 100%;
+		object-fit: contain;
+	}
+}
+.placeholder {
+	display: grid;
+	place-items: center;
+	color: t.$text-secondary;
+	svg {
+		width: 24px;
+		height: 24px;
+	}
+}
+@media (max-width: 720px) {
+	.frame {
+		width: 112px;
+		height: 63px;
+		flex-basis: 112px;
+	}
+}

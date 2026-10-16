@@ -32,6 +32,7 @@ export interface LibraryRecording {
 	path: string;
 	size: number;
 	modifiedMs: number | null;
+	revision?: string | null;
 	status: string;
 	availability: string;
 	duration: number | null;

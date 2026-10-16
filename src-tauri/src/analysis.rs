@@ -12,8 +12,35 @@ type Reply = Result<Option<media::MediaInfo>, String>;
 struct Request {
     executable: PathBuf,
     path: PathBuf,
-    reply: oneshot::Sender<Reply>,
+    work: Work,
     background: bool,
+}
+
+enum Work {
+    Probe(oneshot::Sender<Reply>),
+    Thumbnail {
+        token: String,
+        seconds: f64,
+        reply: oneshot::Sender<Result<Option<Vec<u8>>, String>>,
+    },
+}
+impl Work {
+    fn supersede(self) {
+        match self {
+            Self::Probe(reply) => {
+                let _ = reply.send(Ok(None));
+            }
+            Self::Thumbnail { reply, .. } => {
+                let _ = reply.send(Ok(None));
+            }
+        }
+    }
+    fn thumbnail_token(&self) -> Option<&str> {
+        match self {
+            Self::Thumbnail { token, .. } => Some(token),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Default)]
@@ -23,6 +50,7 @@ struct State {
     running: bool,
     stopped: bool,
     background_active: bool,
+    thumbnail_active: Option<String>,
 }
 
 pub(crate) struct Analysis {
@@ -47,7 +75,7 @@ impl State {
             cancel.send_replace(true);
         }
         if let Some(pending) = self.pending.take() {
-            let _ = pending.reply.send(Ok(None));
+            pending.work.supersede();
         }
     }
 }
@@ -72,7 +100,7 @@ impl Analysis {
         state.pending = Some(Request {
             executable,
             path,
-            reply,
+            work: Work::Probe(reply),
             background: false,
         });
         if !state.running {
@@ -98,23 +126,41 @@ impl Analysis {
                 let (cancel, cancelled) = watch::channel(false);
                 state.cancel = Some(cancel);
                 state.background_active = request.background;
+                state.thumbnail_active = request.work.thumbnail_token().map(str::to_owned);
                 (request, cancelled)
             };
-            let result = media::probe_cancellable(
-                &request.executable,
-                &request.path,
-                &mut cancelled,
-                self.timeout,
-            )
-            .await;
-            // Serialize completion with selection/supersession, including genuine errors.
-            let _state = self.state.lock().unwrap();
-            let result = if *cancelled.borrow() {
-                Ok(None)
-            } else {
-                result
-            };
-            let _ = request.reply.send(result);
+            match request.work {
+                Work::Probe(reply) => {
+                    let result = media::probe_cancellable(
+                        &request.executable,
+                        &request.path,
+                        &mut cancelled,
+                        self.timeout,
+                    )
+                    .await;
+                    let _state = self.state.lock().unwrap();
+                    let _ = reply.send(if *cancelled.borrow() {
+                        Ok(None)
+                    } else {
+                        result
+                    });
+                }
+                Work::Thumbnail { seconds, reply, .. } => {
+                    let result = crate::library::thumbnails::extract(
+                        &request.executable,
+                        &request.path,
+                        seconds,
+                        &mut cancelled,
+                    )
+                    .await;
+                    let _state = self.state.lock().unwrap();
+                    let _ = reply.send(if *cancelled.borrow() {
+                        Ok(None)
+                    } else {
+                        result
+                    });
+                }
+            }
         }
     }
 
@@ -137,7 +183,7 @@ impl Analysis {
         state.pending = Some(Request {
             executable,
             path,
-            reply,
+            work: Work::Probe(reply),
             background: true,
         });
         state.running = true;
@@ -149,7 +195,7 @@ impl Analysis {
 
     pub fn cancel_background(&self) {
         let mut state = self.state.lock().unwrap();
-        if state.background_active {
+        if state.background_active && state.thumbnail_active.is_none() {
             if let Some(cancel) = &state.cancel {
                 cancel.send_replace(true);
             }
@@ -157,10 +203,57 @@ impl Analysis {
         if state
             .pending
             .as_ref()
-            .is_some_and(|request| request.background)
+            .is_some_and(|request| request.background && request.work.thumbnail_token().is_none())
         {
             if let Some(request) = state.pending.take() {
-                let _ = request.reply.send(Ok(None));
+                request.work.supersede();
+            }
+        }
+    }
+
+    pub fn try_thumbnail(
+        self: &Arc<Self>,
+        executable: PathBuf,
+        path: PathBuf,
+        seconds: f64,
+        token: String,
+    ) -> Option<oneshot::Receiver<Result<Option<Vec<u8>>, String>>> {
+        let mut state = self.state.lock().unwrap();
+        if state.running || state.stopped {
+            return None;
+        }
+        let (reply, response) = oneshot::channel();
+        state.pending = Some(Request {
+            executable,
+            path,
+            background: true,
+            work: Work::Thumbnail {
+                token,
+                seconds,
+                reply,
+            },
+        });
+        state.running = true;
+        self.idle.send_replace(false);
+        let worker = self.clone();
+        tauri::async_runtime::spawn(async move { worker.run().await });
+        Some(response)
+    }
+
+    pub fn cancel_thumbnail(&self, token: &str) {
+        let mut state = self.state.lock().unwrap();
+        if state.thumbnail_active.as_deref() == Some(token) {
+            if let Some(cancel) = &state.cancel {
+                cancel.send_replace(true);
+            }
+        }
+        if state
+            .pending
+            .as_ref()
+            .is_some_and(|r| r.work.thumbnail_token() == Some(token))
+        {
+            if let Some(request) = state.pending.take() {
+                request.work.supersede();
             }
         }
     }
