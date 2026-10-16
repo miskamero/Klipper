@@ -1,0 +1,292 @@
+@use "../styles/tokens" as t;
+
+.library {
+	display: flex;
+	flex-direction: column;
+	flex: 1;
+	min-height: 0;
+	min-width: 0;
+	&[hidden] {
+		display: none;
+	}
+	button,
+	input,
+	select {
+		min-height: 36px;
+	}
+	input,
+	select {
+		background: t.$panel;
+		border: 1px solid t.$border;
+		color: t.$text-primary;
+		border-radius: 4px;
+		padding: 6px 8px;
+		min-width: 0;
+	}
+}
+.heading {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	gap: 16px;
+	padding: 20px 24px 16px;
+	h1 {
+		margin: 0;
+		font-size: 22px;
+		font-weight: 600;
+	}
+	p {
+		margin: 4px 0 0;
+		color: t.$text-secondary;
+	}
+}
+.add {
+	flex-shrink: 0;
+}
+.filters {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	padding: 0 24px 16px;
+	border-bottom: 1px solid t.$border;
+	input {
+		flex: 1 1 240px;
+	}
+	select {
+		max-width: 260px;
+	}
+}
+.sources {
+	border-bottom: 1px solid t.$border;
+	padding: 12px 24px;
+}
+.sources > summary {
+	cursor: pointer;
+	color: t.$text-secondary;
+	span {
+		margin-left: 8px;
+	}
+}
+.sourceList {
+	max-height: 200px;
+	overflow-y: auto;
+	margin-top: 8px;
+}
+.source {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 0;
+	border-top: 1px solid t.$border;
+	> div {
+		flex: 1;
+		min-width: 0;
+	}
+	strong,
+	small {
+		display: block;
+		overflow-wrap: anywhere;
+	}
+	strong {
+		font-size: 13px;
+		font-weight: 500;
+	}
+	small {
+		font-size: 12px;
+		color: t.$text-secondary;
+		margin-top: 4px;
+	}
+}
+.progress {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px 16px;
+	background: t.$panel;
+	padding: 12px 24px;
+	border-bottom: 1px solid t.$border;
+	> div {
+		flex: 1;
+	}
+	strong,
+	span {
+		display: block;
+	}
+	strong {
+		font-size: 14px;
+		font-weight: 500;
+	}
+	span {
+		font-size: 13px;
+		color: t.$text-secondary;
+		margin-top: 4px;
+	}
+	details {
+		width: 100%;
+		font-size: 13px;
+		overflow-wrap: anywhere;
+	}
+	ul {
+		max-height: 100px;
+		overflow-y: auto;
+		padding-left: 20px;
+	}
+}
+.error {
+	margin: 0;
+	padding: 12px 24px;
+	border-left: 3px solid t.$warning;
+	overflow-wrap: anywhere;
+}
+.list {
+	flex: 1;
+	min-height: 0;
+	overflow-y: auto;
+	overscroll-behavior: contain;
+	> ul {
+		list-style: none;
+		margin: 0;
+		padding: 0 24px;
+	}
+}
+.recording {
+	display: flex;
+	align-items: center;
+	width: 100%;
+	min-height: 80px !important;
+	padding: 12px 8px;
+	gap: 16px;
+	text-align: left;
+	background: transparent;
+	color: t.$text-primary;
+	border: 0;
+	border-bottom: 1px solid t.$border;
+	border-radius: 0;
+	font-weight: 400;
+	&:hover:not(:disabled) {
+		background: t.$hover;
+	}
+	&:disabled {
+		opacity: 1;
+		color: t.$text-secondary;
+		cursor: default;
+	}
+	strong {
+		display: block;
+		font-size: 14px;
+		font-weight: 500;
+		overflow-wrap: anywhere;
+	}
+	small {
+		display: block;
+		font-size: 12px;
+		color: t.$text-secondary;
+		margin-top: 4px;
+	}
+}
+.play {
+	font-size: 24px;
+	color: t.$text-secondary;
+	flex-shrink: 0;
+}
+.identity {
+	flex: 1;
+	min-width: 0;
+}
+.path {
+	display: block;
+	color: t.$text-secondary;
+	font-size: 12px;
+	overflow-wrap: anywhere;
+	margin-top: 4px;
+}
+.problem {
+	display: block;
+	font-size: 13px;
+	color: t.$warning;
+	overflow-wrap: anywhere;
+	margin-top: 4px;
+}
+.media {
+	width: 160px;
+	flex-shrink: 0;
+	font-size: 13px;
+	font-variant-numeric: tabular-nums;
+}
+.file {
+	width: 112px;
+	flex-shrink: 0;
+	font-size: 13px;
+	font-variant-numeric: tabular-nums;
+	text-align: right;
+}
+.empty {
+	min-height: 200px;
+	height: 100%;
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	align-items: center;
+	padding: 32px;
+	text-align: center;
+	h2 {
+		margin: 0;
+		font-size: 18px;
+		font-weight: 500;
+	}
+	p {
+		max-width: 400px;
+		color: t.$text-secondary;
+		line-height: 1.6;
+	}
+}
+.footer {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	padding: 12px 24px;
+	border-top: 1px solid t.$border;
+	font-size: 13px;
+	color: t.$text-secondary;
+	> div {
+		display: flex;
+		gap: 8px;
+	}
+}
+@media (max-width: 720px) {
+	.heading,
+	.sources,
+	.progress,
+	.footer {
+		padding-left: 12px;
+		padding-right: 12px;
+	}
+	.filters {
+		padding-left: 12px;
+		padding-right: 12px;
+		select {
+			flex: 1 1 140px;
+			min-width: 140px;
+			max-width: 100%;
+		}
+	}
+	.list > ul {
+		padding: 0 8px;
+	}
+	.recording {
+		gap: 8px;
+		flex-wrap: wrap;
+	}
+	.identity {
+		flex-basis: calc(100% - 40px);
+	}
+	.media {
+		margin-left: 28px;
+		width: auto;
+		flex: 1;
+	}
+	.file {
+		width: auto;
+	}
+}

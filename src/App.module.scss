@@ -109,6 +109,10 @@
 	}
 }
 @media (max-width: 960px) {
+	.app[data-workspace="library"] {
+		height: 100dvh;
+		min-height: 580px;
+	}
 	.app {
 		height: auto;
 		min-height: 100dvh;

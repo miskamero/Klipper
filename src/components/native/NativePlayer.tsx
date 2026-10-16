@@ -23,12 +23,17 @@ export default function NativePlayer({
 	const [attempt, setAttempt] = useState(0);
 	const alive = useRef(false);
 	const pending = useRef(new Map<string, Control>());
+	const wakePoll = useRef<(() => void) | null>(null);
 	const hidden = useRef(selecting);
 	hidden.current = selecting || !!error;
 
 	const command = useCallback((control: Control) => {
 		// Coalesce slider updates while IPC is pending; never accumulate an unbounded queue.
 		pending.current.set(control.kind, control);
+		if (control.kind === "volume") {
+			setSnapshot((current) => current && { ...current, volume: control.value });
+		}
+		wakePoll.current?.();
 	}, []);
 	const fullscreen = snapshot?.fullscreen ?? false;
 	const requestFullscreen = useCallback(
@@ -80,8 +85,11 @@ export default function NativePlayer({
 	useEffect(() => {
 		alive.current = true;
 		let disposed = false;
+		let inFlight = false;
 		let timer: ReturnType<typeof setTimeout>;
 		async function poll(load: boolean) {
+			if (disposed || inFlight) return;
+			inFlight = true;
 			try {
 				const next = pending.current.values().next().value;
 				if (!load && next) pending.current.delete(next.kind);
@@ -93,21 +101,36 @@ export default function NativePlayer({
 				});
 				if (disposed) return;
 				if (result.id === id) {
-					setSnapshot(result);
+					// A response may predate the latest slider input. Keep that input visible
+					// until its coalesced command is acknowledged by the same serial pump.
+					const volume = pending.current.get("volume");
+					setSnapshot(
+						volume?.kind === "volume" ? { ...result, volume: volume.value } : result,
+					);
 					setError(result.error);
 					if (result.error) return;
 				}
 			} catch (reason) {
 				if (!disposed) setError(String(reason));
 				return;
+			} finally {
+				inFlight = false;
 			}
-			if (!disposed) timer = setTimeout(() => void poll(false), 100);
+			if (!disposed)
+				timer = setTimeout(() => void poll(false), pending.current.size ? 0 : 100);
 		}
+		const wake = () => {
+			if (disposed || inFlight) return;
+			clearTimeout(timer);
+			void poll(false);
+		};
+		wakePoll.current = wake;
 		void poll(true);
 		return () => {
 			alive.current = false;
 			disposed = true;
 			clearTimeout(timer);
+			if (wakePoll.current === wake) wakePoll.current = null;
 			// StrictMode replays effects on the same instance; do not stop its replacement load.
 			queueMicrotask(() => {
 				if (!alive.current)

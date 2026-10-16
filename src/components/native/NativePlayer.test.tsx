@@ -56,6 +56,46 @@ it("loads only an authorized ID and connects React controls to typed native requ
 		}),
 	);
 });
+
+it("updates volume immediately and coalesces rapid input while a snapshot is pending", async () => {
+	vi.useFakeTimers();
+	let release!: (snapshot: unknown) => void;
+	let hold = true;
+	vi.mocked(invoke).mockImplementation(async (name, args) => {
+		if (name === "mpv_surface") return undefined;
+		const control = (args as { control: { kind: string; value?: number } }).control;
+		if (control.kind === "snapshot" && hold) {
+			return new Promise((resolve) => {
+				release = resolve;
+			});
+		}
+		return { ...initial, volume: control.kind === "volume" ? control.value : 100 };
+	});
+	render(<NativePlayer id={1} selecting={false} />);
+	await act(async () => {
+		await Promise.resolve();
+	});
+	await act(async () => {
+		await vi.advanceTimersByTimeAsync(100);
+	});
+	fireEvent.change(screen.getByLabelText("Volume"), { target: { value: "30" } });
+	fireEvent.change(screen.getByLabelText("Volume"), { target: { value: "60" } });
+	expect((screen.getByLabelText("Volume") as HTMLInputElement).value).toBe("60");
+	expect(invoke).not.toHaveBeenCalledWith("mpv_control", {
+		id: 1,
+		control: { kind: "volume", value: 30 },
+	});
+	hold = false;
+	await act(async () => release(initial));
+	expect((screen.getByLabelText("Volume") as HTMLInputElement).value).toBe("60");
+	await act(async () => {
+		await vi.advanceTimersByTimeAsync(1);
+	});
+	expect(invoke).toHaveBeenCalledWith("mpv_control", {
+		id: 1,
+		control: { kind: "volume", value: 60 },
+	});
+});
 it("ignores a late response from an unmounted recording", async () => {
 	let finish!: (value: unknown) => void;
 	vi.mocked(invoke).mockImplementation(async (name, args) => {

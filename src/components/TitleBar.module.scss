@@ -39,6 +39,7 @@
 	color: t.$text-secondary;
 }
 .actions,
+.navigation,
 .windowControls {
 	display: flex;
 	align-items: center;
@@ -74,6 +75,14 @@
 		fill: none;
 		stroke: currentColor;
 		stroke-width: 1.25;
+	}
+}
+.navigation {
+	gap: 4px;
+	margin-right: 16px;
+	button[aria-current="page"] {
+		color: t.$accent;
+		background: t.$selected;
 	}
 }
 .actions {

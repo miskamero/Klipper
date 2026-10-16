@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "library"
+description = "Native folder selection, bounded library queries, read-only discovery and selected-recording authorization by library ID. No arbitrary paths, SQL or executables."
+commands.allow = ["library_status", "library_query", "library_add_folder", "library_rescan", "library_cancel", "library_remove_folder", "library_open"]

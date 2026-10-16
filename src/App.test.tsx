@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import App from "./App";
@@ -98,13 +98,14 @@ describe("recording workflow", () => {
 		fireEvent.click(screen.getByRole("button", { name: "Open another recording" }));
 		await screen.findByLabelText(second.name);
 		fireEvent.click(screen.getByRole("button", { name: "Open another recording" }));
-		await screen.findByText("HEVC");
+		await screen.findByLabelText(c.name);
+		await within(screen.getByRole("complementary")).findByText("HEVC");
 		await act(async () => {
 			b.reject("Obsolete B failure");
 			a.resolve(info);
 		});
 		expect(await screen.findByLabelText(c.name)).toBeTruthy();
-		expect(screen.getByText("HEVC")).toBeTruthy();
+		expect(within(screen.getByRole("complementary")).getByText("HEVC")).toBeTruthy();
 		expect(screen.queryByText("H264")).toBeNull();
 		expect(screen.queryByText("Obsolete B failure")).toBeNull();
 		expect(analyzeRecording).toHaveBeenCalledTimes(3);
@@ -161,7 +162,7 @@ describe("recording workflow", () => {
 			).toBe(false);
 		});
 
-		expect(screen.getByText("No recording selected")).toBeTruthy();
+		expect(await screen.findByText("No folders added")).toBeTruthy();
 		expect(analyzeRecording).not.toHaveBeenCalled();
 	});
 
@@ -213,12 +214,13 @@ describe("recording workflow", () => {
 
 		fireEvent.click(screen.getByRole("button", { name: /Open another/ }));
 
-		await screen.findByText("HEVC");
+		await screen.findByLabelText(second.name);
+		await within(screen.getByRole("complementary")).findByText("HEVC");
 
 		await act(async () => finishOld(info));
 
 		expect(screen.queryByText("H264")).toBeNull();
-		expect(screen.getByText("HEVC")).toBeTruthy();
+		expect(within(screen.getByRole("complementary")).getByText("HEVC")).toBeTruthy();
 	});
 
 	it("reports a real media element error independently of probe results", async () => {
@@ -261,6 +263,7 @@ it("keeps the selected player mounted while details are hidden and restored", as
 
 it("resizes the inspector with the keyboard and restores its saved width", () => {
 	const { unmount } = render(<App />);
+	fireEvent.click(screen.getByRole("button", { name: "Player" }));
 
 	let handle = screen.getByRole("separator", {
 		name: "Resize recording details",
@@ -275,6 +278,7 @@ it("resizes the inspector with the keyboard and restores its saved width", () =>
 
 	unmount();
 	render(<App />);
+	fireEvent.click(screen.getByRole("button", { name: "Player" }));
 
 	handle = screen.getByRole("separator", {
 		name: "Resize recording details",

@@ -8,9 +8,27 @@ fn main() {
                 "mpv_control",
                 "mpv_surface",
                 "mpv_overlay",
+                "library_status",
+                "library_query",
+                "library_add_folder",
+                "library_rescan",
+                "library_cancel",
+                "library_remove_folder",
+                "library_open",
             ]
         } else {
-            &["select_recording", "analyze_recording", "playback_backend"]
+            &[
+                "select_recording",
+                "analyze_recording",
+                "playback_backend",
+                "library_status",
+                "library_query",
+                "library_add_folder",
+                "library_rescan",
+                "library_cancel",
+                "library_remove_folder",
+                "library_open",
+            ]
         };
     tauri_build::try_build(
         tauri_build::Attributes::new()

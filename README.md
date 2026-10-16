@@ -2,9 +2,18 @@
 
 Klipper is a free, open-source desktop application for playing and inspecting local gameplay recordings. It opens your recordings read-only: no account, no uploads, and no telemetry.
 
-The project is still in development. Playback and media inspection are working; a searchable clip library, editing tools, and compression are planned but **not yet implemented**.
+The project is still in development. Local folder discovery, a searchable library, playback, and media inspection are working. Editing tools, compression, thumbnails, and provider metadata imports are not yet implemented.
 
 ## Features
+
+### Local library
+
+- Add multiple folders through the native folder picker and discover recordings recursively.
+- Search filenames and paths, filter by folder, status or codec, and sort by date, name, duration or size.
+- Rescan incrementally, cancel background indexing, or remove folders without deleting recordings.
+- Keep library metadata in a local SQLite database in Klipper's platform application-data directory.
+
+Discovery skips symbolic links and Windows reparse points. Unchanged recordings reuse cached inspection results; missing files retain their historical metadata. Filesystem identities help recognize moves within selected folders and hard links where supported; uncertain matches remain separate. Folders are only scanned after you add or explicitly rescan them.
 
 ### Video playback
 
@@ -22,7 +31,7 @@ The project is still in development. Playback and media inspection are working; 
 
 **Formats:** MP4 is the primary format. M4V, MOV, MKV, and WebM can also be selected, although actual playback depends on the codecs and playback backend. HEVC playback with D3D11VA hardware decoding has been verified on Windows with an NVIDIA RTX 3080; other hardware configurations remain unverified.
 
-> **Current limitation:** Audio tracks can be inspected, but independent track selection and mixing are not implemented. Klipper is currently a player, not a clip editor or library manager.
+> **Current limitation:** Audio tracks can be inspected, but independent track selection and mixing are not implemented. Klipper is not yet a clip editor.
 
 ## Getting started
 
@@ -68,12 +77,14 @@ If Rust linking fails because Windows SDK or MSVC libraries cannot be found, use
 
 ## Using Klipper
 
-1. Select **Open recording** and choose a gameplay video.
+1. In **Library**, choose **Add folder** to index a recording folder, then open a recording from the list. Alternatively, use **Open recording** to play a single file.
 2. Watch the recording in the player and use the transport controls to seek, pause, adjust volume, or change playback speed.
 3. Expand the inspector to examine video and audio-stream information.
 4. Use the player's fullscreen button for video-only fullscreen. Move the mouse to reveal the controls; press **Escape** to return.
 
-Klipper does not scan your recordings automatically. Only files you explicitly open are made available to the player.
+Use **Library** to return to your current search, filters and browsing position. Expand **Folders** to rescan or remove a source; removal affects only library associations, never source files. The database uses the platform application-data location for org.klipper.desktop (on Windows, %APPDATA%\org.klipper.desktop\library.sqlite3).
+
+Klipper never scans drives or recording folders without selection. Opening an indexed recording revalidates it within a selected root and grants the same single-file playback access as the native file picker.
 
 ## Development
 

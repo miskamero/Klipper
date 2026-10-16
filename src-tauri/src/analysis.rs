@@ -13,6 +13,7 @@ struct Request {
     executable: PathBuf,
     path: PathBuf,
     reply: oneshot::Sender<Reply>,
+    background: bool,
 }
 
 #[derive(Default)]
@@ -21,6 +22,7 @@ struct State {
     cancel: Option<watch::Sender<bool>>,
     running: bool,
     stopped: bool,
+    background_active: bool,
 }
 
 pub(crate) struct Analysis {
@@ -71,6 +73,7 @@ impl Analysis {
             executable,
             path,
             reply,
+            background: false,
         });
         if !state.running {
             state.running = true;
@@ -94,6 +97,7 @@ impl Analysis {
                 };
                 let (cancel, cancelled) = watch::channel(false);
                 state.cancel = Some(cancel);
+                state.background_active = request.background;
                 (request, cancelled)
             };
             let result = media::probe_cancellable(
@@ -116,6 +120,53 @@ impl Analysis {
 
     pub fn is_idle(&self) -> bool {
         *self.idle.borrow()
+    }
+
+    // No background queue: the scanner keeps its pending work in SQLite and retries when idle.
+    // Foreground request()/supersede() still preempts and reaps this process through the same owner.
+    pub fn try_background(
+        self: &Arc<Self>,
+        executable: PathBuf,
+        path: PathBuf,
+    ) -> Option<oneshot::Receiver<Reply>> {
+        let mut state = self.state.lock().unwrap();
+        if state.running || state.pending.is_some() || state.stopped {
+            return None;
+        }
+        let (reply, response) = oneshot::channel();
+        state.pending = Some(Request {
+            executable,
+            path,
+            reply,
+            background: true,
+        });
+        state.running = true;
+        self.idle.send_replace(false);
+        let worker = Arc::clone(self);
+        tauri::async_runtime::spawn(async move { worker.run().await });
+        Some(response)
+    }
+
+    pub fn cancel_background(&self) {
+        let mut state = self.state.lock().unwrap();
+        if state.background_active {
+            if let Some(cancel) = &state.cancel {
+                cancel.send_replace(true);
+            }
+        }
+        if state
+            .pending
+            .as_ref()
+            .is_some_and(|request| request.background)
+        {
+            if let Some(request) = state.pending.take() {
+                let _ = request.reply.send(Ok(None));
+            }
+        }
+    }
+
+    pub fn is_stopped(&self) -> bool {
+        self.state.lock().unwrap().stopped
     }
 
     pub fn stop(&self) {

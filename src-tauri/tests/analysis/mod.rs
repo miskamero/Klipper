@@ -193,3 +193,56 @@ async fn already_cancelled_probe_never_spawns() {
     .is_none());
     assert!(!path.with_extension("started").exists());
 }
+
+#[tokio::test]
+async fn foreground_preempts_background_and_reaps_before_starting() {
+    let directory = tempfile::tempdir().unwrap();
+    let executable = helper(directory.path());
+    let analysis = Arc::new(Analysis::default());
+    let background = fixture(directory.path(), "slow-background");
+    let reply = analysis
+        .try_background(executable.clone(), background.clone())
+        .unwrap();
+    let pid = started(&background).await;
+    assert!(analysis
+        .try_background(executable.clone(), background)
+        .is_none());
+    let foreground = analysis.request(executable.clone(), fixture(directory.path(), "foreground"));
+    assert!(response(reply).await.unwrap().is_none());
+    assert_reaped(pid);
+    assert!(response(foreground).await.unwrap().is_some());
+    analysis.shutdown().await;
+    assert!(!directory.path().join("overlap").exists());
+}
+
+#[tokio::test]
+async fn cancelling_library_work_never_cancels_foreground_inspection() {
+    let directory = tempfile::tempdir().unwrap();
+    let executable = helper(directory.path());
+    let analysis = Arc::new(Analysis {
+        timeout: Duration::from_millis(300),
+        ..Analysis::default()
+    });
+    let path = fixture(directory.path(), "slow-foreground");
+    let reply = analysis.request(executable.clone(), path.clone());
+    let pid = started(&path).await;
+    analysis.cancel_background();
+    assert!(response(reply).await.unwrap_err().contains("timed out"));
+    assert_reaped(pid);
+    let path = fixture(directory.path(), "slow-background");
+    // Response delivery precedes the worker's idle transition by a few instructions.
+    let background = loop {
+        if let Some(reply) = analysis.try_background(executable.clone(), path.clone()) {
+            break reply;
+        }
+        tokio::task::yield_now().await;
+    };
+    let pid = started(&path).await;
+    analysis.cancel_background();
+    assert!(response(background).await.unwrap().is_none());
+    assert_reaped(pid);
+    let recovery = analysis.request(executable, fixture(directory.path(), "recovery"));
+    assert!(response(recovery).await.unwrap().is_some());
+    analysis.shutdown().await;
+    assert!(!directory.path().join("overlap").exists());
+}

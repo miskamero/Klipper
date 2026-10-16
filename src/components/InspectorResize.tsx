@@ -3,7 +3,7 @@ import { useEffect, useState, type RefObject } from "react";
 const storageKey = "klipper.inspectorWidth";
 const clamp = (width: number, maximum: number) => Math.min(maximum, Math.max(340, width));
 
-export function useInspectorWidth(workspace: RefObject<HTMLDivElement | null>) {
+export function useInspectorWidth(workspace: RefObject<HTMLDivElement | null>, active = true) {
 	const [preferred, setPreferred] = useState(() => {
 		try {
 			const stored = Number(localStorage.getItem(storageKey));
@@ -15,13 +15,13 @@ export function useInspectorWidth(workspace: RefObject<HTMLDivElement | null>) {
 	const [maximum, setMaximum] = useState(560);
 	useEffect(() => {
 		const element = workspace.current;
-		if (!element || typeof ResizeObserver === "undefined") return;
+		if (!active || !element || typeof ResizeObserver === "undefined") return;
 		const observer = new ResizeObserver(() => {
 			setMaximum(Math.max(340, Math.min(560, element.clientWidth - 496)));
 		});
 		observer.observe(element);
 		return () => observer.disconnect();
-	}, [workspace]);
+	}, [workspace, active]);
 	useEffect(() => {
 		try {
 			localStorage.setItem(storageKey, String(preferred));

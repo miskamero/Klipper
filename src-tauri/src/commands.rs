@@ -33,8 +33,48 @@ impl Default for RecordingState {
     }
 }
 
-#[cfg(windows)]
 impl RecordingState {
+    pub(crate) fn begin_picker(&self) -> Result<(), String> {
+        if self.picking.swap(true, Ordering::SeqCst) {
+            Err("A file picker is already open.".into())
+        } else {
+            Ok(())
+        }
+    }
+    pub(crate) fn end_picker(&self) {
+        self.picking.store(false, Ordering::SeqCst);
+    }
+    pub(crate) fn authorize(
+        &self,
+        app: &tauri::AppHandle,
+        path: PathBuf,
+    ) -> Result<Recording, String> {
+        let verified = validate_file(&path)?;
+        if verified != path {
+            return Err("The selected file's location changed. Select it again.".into());
+        }
+        let path = verified;
+        app.asset_protocol_scope()
+            .allow_file(&path)
+            .map_err(|e| e.to_string())?;
+        let mut selected = self
+            .selected
+            .lock()
+            .map_err(|_| "Recording state unavailable.")?;
+        let recording = Recording {
+            id: selected.as_ref().map_or(1, |previous| previous.id + 1),
+            name: path
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .into_owned(),
+            path,
+        };
+        *selected = Some(recording.clone());
+        self.analysis.supersede();
+        Ok(recording)
+    }
+    #[cfg(windows)]
     pub(crate) fn with_selected<T>(
         &self,
         id: u64,
@@ -100,25 +140,7 @@ pub async fn select_recording(
     let path = tauri::async_runtime::spawn_blocking(move || validate_file(&path))
         .await
         .map_err(|_| "File validation failed.".to_string())??;
-    app.asset_protocol_scope()
-        .allow_file(&path)
-        .map_err(|e| e.to_string())?;
-    let mut selected = state
-        .selected
-        .lock()
-        .map_err(|_| "Recording state unavailable.".to_string())?;
-    let recording = Recording {
-        id: selected.as_ref().map_or(1, |previous| previous.id + 1),
-        name: path
-            .file_name()
-            .unwrap_or_default()
-            .to_string_lossy()
-            .into_owned(),
-        path,
-    };
-    *selected = Some(recording.clone());
-    state.analysis.supersede();
-    Ok(Some(recording))
+    Ok(Some(state.authorize(&app, path)?))
 }
 
 #[tauri::command]

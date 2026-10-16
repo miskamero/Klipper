@@ -5,7 +5,7 @@ use tokio::{
     process::Command,
 };
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AudioStream {
     index: u32,
@@ -15,7 +15,7 @@ pub struct AudioStream {
     tags: BTreeMap<String, String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MediaInfo {
     container: Option<String>,

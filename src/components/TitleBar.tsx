@@ -9,12 +9,16 @@ export default function TitleBar({
 	inspectorOpen,
 	onOpen,
 	onToggleInspector,
+	workspace = "player",
+	onWorkspaceChange,
 }: {
 	selecting: boolean;
 	hasRecording: boolean;
 	inspectorOpen: boolean;
 	onOpen: () => void;
 	onToggleInspector: () => void;
+	workspace?: "library" | "player";
+	onWorkspaceChange?: (workspace: "library" | "player") => void;
 }) {
 	const [nativeWindow] = useState(() => (isTauri() ? getCurrentWindow() : null));
 	const [maximized, setMaximized] = useState(false);
@@ -106,8 +110,24 @@ export default function TitleBar({
 						<path d="M8 7v10m8-10-6 5 6 5" />
 					</svg>
 					<span className={styles.brand}>Klipper</span>
-					<span className={styles.workspaceName}>Player</span>
+					{!onWorkspaceChange && <span className={styles.workspaceName}>Player</span>}
 				</div>
+				{onWorkspaceChange && (
+					<nav className={styles.navigation} aria-label="Workspace">
+						<button
+							aria-current={workspace === "library" ? "page" : undefined}
+							onClick={() => onWorkspaceChange("library")}
+						>
+							Library
+						</button>
+						<button
+							aria-current={workspace === "player" ? "page" : undefined}
+							onClick={() => onWorkspaceChange("player")}
+						>
+							Player
+						</button>
+					</nav>
+				)}
 				<div className={styles.actions}>
 					<button
 						onClick={onOpen}
@@ -120,18 +140,22 @@ export default function TitleBar({
 						</svg>
 						<span>{selecting ? "Choosing..." : "Open recording"}</span>
 					</button>
-					<button
-						aria-label={inspectorOpen ? "Hide details" : "Show details"}
-						title={inspectorOpen ? "Hide recording details" : "Show recording details"}
-						aria-expanded={inspectorOpen}
-						aria-controls="recording-inspector"
-						onClick={onToggleInspector}
-					>
-						<svg viewBox="0 0 18 18" aria-hidden="true">
-							<rect x="2" y="3" width="14" height="12" rx="1" />
-							<path d="M11 3v12" />
-						</svg>
-					</button>
+					{workspace === "player" && (
+						<button
+							aria-label={inspectorOpen ? "Hide details" : "Show details"}
+							title={
+								inspectorOpen ? "Hide recording details" : "Show recording details"
+							}
+							aria-expanded={inspectorOpen}
+							aria-controls="recording-inspector"
+							onClick={onToggleInspector}
+						>
+							<svg viewBox="0 0 18 18" aria-hidden="true">
+								<rect x="2" y="3" width="14" height="12" rx="1" />
+								<path d="M11 3v12" />
+							</svg>
+						</button>
+					)}
 				</div>
 				{nativeWindow && (
 					<div
