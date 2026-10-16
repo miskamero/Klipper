@@ -19,6 +19,7 @@ __pycache__/
 *.avi
 *.wav
 *.mp3
+*.m4v
 .env
 .env.*
 !.env.example
