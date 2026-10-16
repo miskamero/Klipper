@@ -33,6 +33,12 @@ export async function selectRecording(): Promise<Recording | null> {
 export function analyzeRecording(id: number): Promise<MediaInfo | null> {
 	return invoke("analyze_recording", { id });
 }
+export function activateRecording(id: number): Promise<Recording> {
+	return invoke("activate_recording", { id });
+}
+export function deactivateRecording(id: number): Promise<void> {
+	return invoke("deactivate_recording", { id });
+}
 export function playbackUrl(recording: Recording): string {
 	return convertFileSrc(recording.path);
 }

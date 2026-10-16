@@ -37,6 +37,8 @@ pub fn run() {
     let builder = builder.invoke_handler(tauri::generate_handler![
         commands::select_recording,
         commands::analyze_recording,
+        commands::activate_recording,
+        commands::deactivate_recording,
         playback::playback_backend,
         library::library_status,
         library::library_query,
@@ -52,6 +54,8 @@ pub fn run() {
     let builder = builder.invoke_handler(tauri::generate_handler![
         commands::select_recording,
         commands::analyze_recording,
+        commands::activate_recording,
+        commands::deactivate_recording,
         playback::playback_backend,
         native_player::mpv_control,
         native_player::mpv_surface,

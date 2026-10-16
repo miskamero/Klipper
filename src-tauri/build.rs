@@ -4,6 +4,8 @@ fn main() {
             &[
                 "select_recording",
                 "analyze_recording",
+                "activate_recording",
+                "deactivate_recording",
                 "playback_backend",
                 "mpv_control",
                 "mpv_surface",
@@ -22,6 +24,8 @@ fn main() {
             &[
                 "select_recording",
                 "analyze_recording",
+                "activate_recording",
+                "deactivate_recording",
                 "playback_backend",
                 "library_status",
                 "library_query",

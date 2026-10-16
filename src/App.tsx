@@ -4,105 +4,38 @@ import InspectorResize, { useInspectorWidth } from "./components/InspectorResize
 import RecordingPlayer from "./components/RecordingPlayer";
 import Library from "./components/Library";
 import TitleBar from "./components/TitleBar";
-import { openLibraryRecording } from "./services/library";
-import {
-	analyzeRecording,
-	errorMessage,
-	selectRecording,
-	type MediaInfo,
-	type Recording,
-} from "./services/media";
+import useRecordingWorkspaces from "./useRecordingWorkspaces";
 import styles from "./App.module.scss";
 
 export default function App() {
-	const [view, setView] = useState<"library" | "player">("library");
-	const [recording, setRecording] = useState<Recording | null>(null);
-	const [info, setInfo] = useState<MediaInfo | null>(null);
-	const [selecting, setSelecting] = useState(false);
-	const [analyzing, setAnalyzing] = useState(false);
-	const [selectionError, setSelectionError] = useState("");
-	const [analysisError, setAnalysisError] = useState("");
+	const session = useRecordingWorkspaces();
+	const { view, selecting } = session;
+	const recording = session.current?.recording ?? null;
+	const info = session.current?.info ?? null;
+	const analyzing = session.current?.analyzing ?? false;
+	const analysisError = session.current?.error ?? "";
+	const selectionError = session.error;
 	const [inspectorOpen, setInspectorOpen] = useState(true);
 	const [videoFullscreen, setVideoFullscreen] = useState(false);
 	const workspace = useRef<HTMLDivElement>(null);
 	const details = useRef<HTMLDivElement>(null);
-	const inspector = useInspectorWidth(workspace, view === "player");
-	const generation = useRef(0);
-	const picking = useRef(false);
-	const mounted = useRef(false);
-
-	useEffect(() => {
-		mounted.current = true;
-		return () => {
-			mounted.current = false;
-			generation.current += 1;
-		};
-	}, []);
-
+	const inspector = useInspectorWidth(workspace, view !== "library");
 	useEffect(() => {
 		if (details.current) details.current.scrollTop = 0;
 	}, [recording?.id]);
-
-	async function inspect(selected: Recording) {
-		if (!mounted.current) return;
-		const request = ++generation.current;
-		setInfo(null);
-		setAnalysisError("");
-		setAnalyzing(true);
-		try {
-			const result = await analyzeRecording(selected.id);
-			if (request === generation.current) setInfo(result);
-		} catch (error) {
-			if (request === generation.current) setAnalysisError(errorMessage(error));
-		} finally {
-			if (request === generation.current) setAnalyzing(false);
-		}
-	}
-
-	async function open(fileId?: number) {
-		if (!mounted.current || picking.current) return;
-		picking.current = true;
-		setSelecting(true);
-		setSelectionError("");
-		let selected: Recording | null;
-		let cached: MediaInfo | null = null;
-		try {
-			if (fileId === undefined) selected = await selectRecording();
-			else {
-				const result = await openLibraryRecording(fileId);
-				selected = result.recording;
-				cached = result.info;
-			}
-		} catch (error) {
-			if (mounted.current) setSelectionError(errorMessage(error));
-			return;
-		} finally {
-			picking.current = false;
-			if (mounted.current) setSelecting(false);
-		}
-		if (!mounted.current || !selected) return;
-		setRecording(selected);
-		setView("player");
-		if (cached) {
-			++generation.current;
-			setInfo(cached);
-			setAnalysisError("");
-			setAnalyzing(false);
-		} else await inspect(selected);
-	}
-
 	return (
 		<div
 			data-workspace={view}
 			className={`${styles.app} ${videoFullscreen ? styles.videoFullscreen : ""}`}
 		>
 			<TitleBar
-				workspace={view}
-				onWorkspaceChange={setView}
+				workspace={view === "player" ? "player" : "library"}
+				showInspector={view !== "library"}
+				onWorkspaceChange={session.navigate}
 				selecting={selecting}
-				hasRecording={!!recording}
+				hasRecording={session.hasStandalone}
 				inspectorOpen={inspectorOpen}
-				onOpen={() => void open()}
+				onOpen={() => void session.open()}
 				onToggleInspector={() => setInspectorOpen(!inspectorOpen)}
 			/>
 			<main className={styles.main} data-workspace={view}>
@@ -114,9 +47,16 @@ export default function App() {
 				<Library
 					active={view === "library"}
 					selecting={selecting}
-					onOpen={(id) => void open(id)}
+					onOpen={(id) => void session.open(id)}
 				/>
-				{view === "player" && (
+				{view === "libraryPlayback" && (
+					<div className={styles.libraryBack}>
+						<button onClick={() => session.navigate("library")}>
+							<span aria-hidden="true">←</span> Back to library
+						</button>
+					</div>
+				)}
+				{view !== "library" && (
 					<div
 						ref={workspace}
 						style={{
@@ -133,8 +73,14 @@ export default function App() {
 									recording={recording}
 									info={info}
 									selecting={selecting}
+									initialPosition={session.current?.resume}
+									onPosition={session.playbackChanged}
 									onFullscreenChange={setVideoFullscreen}
 								/>
+							) : !session.ready ? (
+								<p className={styles.empty} role="status">
+									Switching recording…
+								</p>
 							) : (
 								<div className={styles.empty}>
 									<svg
@@ -153,7 +99,10 @@ export default function App() {
 									<p>
 										Open a local recording to play it and inspect its streams.
 									</p>
-									<button onClick={() => void open()} disabled={selecting}>
+									<button
+										onClick={() => void session.open()}
+										disabled={selecting}
+									>
 										Open a local recording
 									</button>
 									<small>
@@ -187,9 +136,7 @@ export default function App() {
 								info={info}
 								loading={analyzing}
 								error={analysisError}
-								onRetry={() => {
-									if (recording) void inspect(recording);
-								}}
+								onRetry={session.retry}
 							/>
 						</div>
 					</div>

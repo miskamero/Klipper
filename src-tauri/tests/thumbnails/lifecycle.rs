@@ -58,6 +58,7 @@ async fn cached_images_survive_restart_invalidate_changed_inputs_and_never_bypas
         image
     );
     fs::write(&path, b"changed synthetic fixture with another size").unwrap();
+    assert!(library.cached_thumbnail(id).await.unwrap().is_none());
     assert!(library
         .thumbnail(id, "changed".into(), missing.clone(), analysis.clone())
         .await
@@ -87,6 +88,61 @@ async fn cached_images_survive_restart_invalidate_changed_inputs_and_never_bypas
         .is_err());
     library.shutdown(&analysis).await;
     analysis.shutdown().await;
+}
+
+#[tokio::test]
+async fn disk_cache_hits_bypass_an_active_extraction_without_spawning_or_cancelling_it() {
+    let (_temp, library, id, path, executable) = setup();
+    let analysis = Arc::new(Analysis::default());
+    let image = library
+        .thumbnail(id, "warm".into(), executable.clone(), analysis.clone())
+        .await
+        .unwrap()
+        .unwrap();
+    let slow = path.with_file_name("slow-uncached.mp4");
+    fs::write(&slow, b"synthetic slow fixture").unwrap();
+    let source = slow.clone();
+    let other_id = library
+        .database(move |db| {
+            let root = db.roots()?[0].id;
+            db.discover(root, 2, &files::describe(&source)?)?;
+            Ok(db
+                .query(Default::default())?
+                .items
+                .into_iter()
+                .find(|row| row.name == "slow-uncached.mp4")
+                .unwrap()
+                .id)
+        })
+        .await
+        .unwrap();
+    let worker = library.clone();
+    let owner = analysis.clone();
+    let extraction = tokio::spawn(async move {
+        worker
+            .thumbnail(other_id, "blocked".into(), executable, owner)
+            .await
+    });
+    tokio::time::timeout(Duration::from_secs(10), async {
+        while !slow.with_extension("started").exists() {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    let cached = tokio::time::timeout(Duration::from_secs(2), library.cached_thumbnail(id))
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    assert_eq!(cached, image);
+    assert!(!analysis.is_idle());
+    assert!(!library.thumbnails.is_idle());
+    library.thumbnails.cancel("blocked", &analysis);
+    assert!(extraction.await.unwrap().unwrap().is_none());
+    analysis.shutdown().await;
+    assert!(analysis.is_idle());
+    assert!(library.thumbnails.is_idle());
 }
 
 #[tokio::test]

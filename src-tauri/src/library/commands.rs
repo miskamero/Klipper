@@ -130,7 +130,11 @@ pub async fn library_open(
     let selected_app = app.clone();
     let selected_path = path.clone();
     // Metadata validation above already ran off the UI thread. The final authorization rechecks it.
-    let recording = recordings.authorize(&selected_app, selected_path)?;
+    let recording = recordings.authorize(
+        &selected_app,
+        selected_path,
+        crate::commands::Context::Library,
+    )?;
     Ok(Opened { recording, info })
 }
 

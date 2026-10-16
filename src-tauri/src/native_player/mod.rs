@@ -22,6 +22,7 @@ use windows_sys::Win32::{
 #[serde(tag = "kind", content = "value", rename_all = "camelCase")]
 pub enum Control {
     Load,
+    LoadPaused,
     Reload,
     Pause(bool),
     Seek(f64),
@@ -151,7 +152,10 @@ impl NativePlayer {
                 };
                 let result = (|| -> Result<Snapshot, String> {
                     unsafe {
-                        if matches!(request.control, Control::Load | Control::Reload) {
+                        if matches!(
+                            request.control,
+                            Control::Load | Control::LoadPaused | Control::Reload
+                        ) {
                             if request.id < current {
                                 return Err("Superseded recording".into());
                             }
@@ -168,12 +172,23 @@ impl NativePlayer {
                                 loaded = false;
                                 started = false;
                                 while (*(p.wait_event)(p.context, 0.0)).id != 0 {}
+                                if matches!(request.control, Control::LoadPaused) {
+                                    p.send(&["set", "pause", "yes"])?;
+                                }
                                 p.send(&[
                                     "loadfile",
                                     request.path.as_deref().ok_or("Missing authorized file")?,
                                     "replace",
                                 ])?;
-                                p.send(&["set", "pause", "no"])?;
+                                p.send(&[
+                                    "set",
+                                    "pause",
+                                    if matches!(request.control, Control::LoadPaused) {
+                                        "yes"
+                                    } else {
+                                        "no"
+                                    },
+                                ])?;
                                 p.send(&["set", "speed", "1"])?;
                                 load_requested = true;
                             }
@@ -385,6 +400,45 @@ pub struct Bounds {
     #[serde(default, rename = "controlsVisible")]
     controls_visible: bool,
 }
+
+// Reuse the existing stop/fullscreen/surface ownership checks. Navigation awaits this barrier
+// before activating another selection; stale IDs cannot stop or hide a newer worker/surface.
+pub(crate) async fn deactivate(window: &tauri::WebviewWindow, id: u64) -> Result<(), String> {
+    if window.state::<NativeState>().player().is_err() {
+        return Ok(());
+    }
+    let result = mpv_control(
+        window.clone(),
+        window.state::<NativeState>(),
+        window.state::<crate::commands::RecordingState>(),
+        id,
+        Control::Stop,
+    )
+    .await;
+    mpv_surface(
+        window.clone(),
+        window.state::<NativeState>(),
+        window.state::<crate::commands::RecordingState>(),
+        id,
+        Bounds {
+            x: 0.0,
+            y: 0.0,
+            width: 0.0,
+            height: 0.0,
+            visible: false,
+            cursor_hidden: false,
+            controls_visible: false,
+        },
+    )
+    .await?;
+    match result {
+        Ok(_) => Ok(()),
+        Err(error) if error == "Superseded recording" || error == "Native player is not loaded" => {
+            Ok(())
+        }
+        Err(error) => Err(error),
+    }
+}
 #[tauri::command]
 pub async fn mpv_surface(
     window: tauri::WebviewWindow,
@@ -478,6 +532,7 @@ mod tests {
     #[test]
     fn controls_window_cannot_load_files_or_enter_fullscreen() {
         assert!(!Control::Load.allowed_from_overlay());
+        assert!(!Control::LoadPaused.allowed_from_overlay());
         assert!(!Control::Reload.allowed_from_overlay());
         assert!(!Control::Stop.allowed_from_overlay());
         assert!(!Control::Fullscreen(true).allowed_from_overlay());

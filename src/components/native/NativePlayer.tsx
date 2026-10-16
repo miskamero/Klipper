@@ -5,16 +5,21 @@ import NativeTransport from "./NativeTransport";
 import type { Control, Snapshot } from "./nativePlayback";
 import styles from "../Player.module.scss";
 import useVideoFullscreen from "./useVideoFullscreen";
+import type { PlaybackPosition } from "../../services/playback";
 
 // The native worker owns playback; this component coordinates controls and surface geometry.
 export default function NativePlayer({
 	id,
 	selecting,
 	onFullscreenChange,
+	initialPosition,
+	onPosition,
 }: {
 	id: number;
 	selecting: boolean;
 	onFullscreenChange?: (value: boolean) => void;
+	initialPosition?: PlaybackPosition;
+	onPosition?: (value: PlaybackPosition) => void;
 }) {
 	const stage = useRef<HTMLDivElement>(null);
 	const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
@@ -25,6 +30,9 @@ export default function NativePlayer({
 	const pending = useRef(new Map<string, Control>());
 	const wakePoll = useRef<(() => void) | null>(null);
 	const hidden = useRef(selecting);
+	const positionCallback = useRef(onPosition);
+	positionCallback.current = onPosition;
+	const restore = useRef(initialPosition);
 	hidden.current = selecting || !!error;
 
 	const command = useCallback((control: Control) => {
@@ -96,11 +104,29 @@ export default function NativePlayer({
 				const result = await invoke<Snapshot>("mpv_control", {
 					id,
 					control: load
-						? { kind: attempt ? "reload" : "load" }
+						? { kind: attempt ? "reload" : initialPosition ? "loadPaused" : "load" }
 						: (next ?? { kind: "snapshot" }),
 				});
 				if (disposed) return;
 				if (result.id === id) {
+					if (restore.current && result.duration > 0) {
+						const saved = restore.current;
+						restore.current = undefined;
+						pending.current.set("seek", {
+							kind: "seek",
+							value: Math.min(saved.position, result.duration),
+						});
+						pending.current.set("speed", { kind: "speed", value: saved.speed });
+						pending.current.set("volume", { kind: "volume", value: saved.volume });
+						pending.current.set("mute", { kind: "mute", value: saved.muted });
+					} else if (!restore.current && !pending.current.size && result.duration > 0) {
+						positionCallback.current?.({
+							position: result.position,
+							speed: result.speed,
+							volume: result.volume,
+							muted: result.muted,
+						});
+					}
 					// A response may predate the latest slider input. Keep that input visible
 					// until its coalesced command is acknowledged by the same serial pump.
 					const volume = pending.current.get("volume");
@@ -137,7 +163,7 @@ export default function NativePlayer({
 					void invoke("mpv_control", { id, control: { kind: "stop" } }).catch(() => {});
 			});
 		};
-	}, [id, attempt]);
+	}, [id, attempt, initialPosition]);
 
 	useEffect(() => {
 		let disposed = false;

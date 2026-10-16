@@ -4,6 +4,11 @@ description = "Open the native picker and grant access to the chosen video."
 commands.allow = ["select_recording"]
 
 [[permission]]
+identifier = "recording-session"
+description = "Activate a previously selected in-session recording ID, or release owned playback. No arbitrary paths or process IDs."
+commands.allow = ["activate_recording", "deactivate_recording"]
+
+[[permission]]
 identifier = "recording-analyze"
 description = "Analyze the current user-selected recording by opaque ID."
 commands.allow = ["analyze_recording"]

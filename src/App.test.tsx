@@ -8,6 +8,8 @@ import { analyzeRecording, selectRecording, type MediaInfo } from "./services/me
 
 vi.mock("./services/media", () => ({
 	selectRecording: vi.fn(),
+	activateRecording: vi.fn(),
+	deactivateRecording: vi.fn(async () => {}),
 	analyzeRecording: vi.fn(),
 	playbackUrl: (recording: { id: number }) => `asset://synthetic-${recording.id}`,
 	errorMessage: (error: unknown) => String(error),
@@ -162,7 +164,7 @@ describe("recording workflow", () => {
 			).toBe(false);
 		});
 
-		expect(await screen.findByText("No folders added")).toBeTruthy();
+		expect(await screen.findByText("Your recordings start here")).toBeTruthy();
 		expect(analyzeRecording).not.toHaveBeenCalled();
 	});
 

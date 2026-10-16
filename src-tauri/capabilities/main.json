@@ -6,6 +6,7 @@
 	"permissions": [
 		"library",
 		"recording-select",
+		"recording-session",
 		"recording-analyze",
 		"playback-backend",
 		"core:window:allow-minimize",

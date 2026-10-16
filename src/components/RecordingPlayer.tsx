@@ -3,6 +3,7 @@ import { getPlaybackBackend, type PlaybackBackend } from "../services/playback";
 import { errorMessage, playbackUrl, type MediaInfo, type Recording } from "../services/media";
 import Player from "./Player";
 import styles from "./Player.module.scss";
+import type { PlaybackPosition } from "../services/playback";
 
 const NativePlayer = lazy(() => import("./native/NativePlayer"));
 
@@ -11,11 +12,15 @@ export default function RecordingPlayer({
 	info,
 	selecting,
 	onFullscreenChange,
+	initialPosition,
+	onPosition,
 }: {
 	recording: Recording;
 	info: MediaInfo | null;
 	selecting: boolean;
 	onFullscreenChange?: (value: boolean) => void;
+	initialPosition?: PlaybackPosition;
+	onPosition?: (value: PlaybackPosition) => void;
 }) {
 	const [backend, setBackend] = useState<PlaybackBackend | null>(null);
 	const [attempt, setAttempt] = useState(0);
@@ -47,11 +52,21 @@ export default function RecordingPlayer({
 					id={recording.id}
 					selecting={selecting}
 					onFullscreenChange={onFullscreenChange}
+					initialPosition={initialPosition}
+					onPosition={onPosition}
 				/>
 			</Suspense>
 		);
 	if (backend?.engine === "html" || (systemPlayback && !hevc))
-		return <Player url={playbackUrl(recording)} name={recording.name} hevc={hevc} />;
+		return (
+			<Player
+				url={playbackUrl(recording)}
+				name={recording.name}
+				hevc={hevc}
+				initialPosition={initialPosition}
+				onPosition={onPosition}
+			/>
+		);
 	return (
 		<div className={styles.player}>
 			<div className={styles.stage}>

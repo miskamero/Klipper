@@ -11,6 +11,7 @@ export default function TitleBar({
 	onToggleInspector,
 	workspace = "player",
 	onWorkspaceChange,
+	showInspector = workspace === "player",
 }: {
 	selecting: boolean;
 	hasRecording: boolean;
@@ -19,6 +20,7 @@ export default function TitleBar({
 	onToggleInspector: () => void;
 	workspace?: "library" | "player";
 	onWorkspaceChange?: (workspace: "library" | "player") => void;
+	showInspector?: boolean;
 }) {
 	const [nativeWindow] = useState(() => (isTauri() ? getCurrentWindow() : null));
 	const [maximized, setMaximized] = useState(false);
@@ -116,12 +118,14 @@ export default function TitleBar({
 					<nav className={styles.navigation} aria-label="Workspace">
 						<button
 							aria-current={workspace === "library" ? "page" : undefined}
+							disabled={selecting}
 							onClick={() => onWorkspaceChange("library")}
 						>
 							Library
 						</button>
 						<button
 							aria-current={workspace === "player" ? "page" : undefined}
+							disabled={selecting}
 							onClick={() => onWorkspaceChange("player")}
 						>
 							Player
@@ -133,14 +137,14 @@ export default function TitleBar({
 						onClick={onOpen}
 						disabled={selecting}
 						aria-label={hasRecording ? "Open another recording" : "Open recording"}
-						title="Open a local recording"
+						title="Open a local recording in the standalone Player"
 					>
 						<svg viewBox="0 0 18 18" aria-hidden="true">
 							<path d="M2 5h5l2 2h7v8H2zM2 5V3h5l2 2h6v2" />
 						</svg>
 						<span>{selecting ? "Choosing..." : "Open recording"}</span>
 					</button>
-					{workspace === "player" && (
+					{showInspector && (
 						<button
 							aria-label={inspectorOpen ? "Hide details" : "Show details"}
 							title={

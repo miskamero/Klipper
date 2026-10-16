@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { playbackError, time } from "../lib/format";
 import styles from "./Player.module.scss";
+import type { PlaybackPosition } from "../services/playback";
 
 const playbackRates = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 3];
 
@@ -8,10 +9,14 @@ export default function Player({
 	url,
 	name,
 	hevc = false,
+	initialPosition,
+	onPosition,
 }: {
 	url: string;
 	name: string;
 	hevc?: boolean;
+	initialPosition?: PlaybackPosition;
+	onPosition?: (value: PlaybackPosition) => void;
 }) {
 	const videoRef = useRef<HTMLVideoElement>(null);
 	const playerRef = useRef<HTMLDivElement>(null);
@@ -25,6 +30,14 @@ export default function Player({
 	const [muted, setMuted] = useState(false);
 	const [rate, setRate] = useState(1);
 	const [rateError, setRateError] = useState("");
+	function report(video: HTMLVideoElement) {
+		onPosition?.({
+			position: video.currentTime,
+			speed: video.playbackRate,
+			volume: video.volume * 100,
+			muted: video.muted,
+		});
+	}
 
 	function changeRate(requested: number) {
 		const video = videoRef.current;
@@ -83,19 +96,39 @@ export default function Player({
 					playsInline
 					aria-label={name}
 					onLoadedMetadata={(event) => {
+						if (initialPosition) {
+							const video = event.currentTarget;
+							video.pause();
+							video.currentTime = Math.min(
+								initialPosition.position,
+								Number.isFinite(video.duration)
+									? video.duration
+									: initialPosition.position,
+							);
+							video.volume = initialPosition.volume / 100;
+							video.muted = initialPosition.muted;
+							video.playbackRate = initialPosition.speed;
+						}
 						updateDuration(event.currentTarget);
 						setStatus("");
 					}}
 					onDurationChange={(event) => updateDuration(event.currentTarget)}
-					onTimeUpdate={(event) => setPosition(event.currentTarget.currentTime)}
+					onTimeUpdate={(event) => {
+						setPosition(event.currentTarget.currentTime);
+						report(event.currentTarget);
+					}}
 					onPlay={() => setPlaying(true)}
 					onPause={() => setPlaying(false)}
 					onEnded={() => setPlaying(false)}
 					onVolumeChange={(event) => {
 						setVolume(event.currentTarget.volume);
 						setMuted(event.currentTarget.muted);
+						report(event.currentTarget);
 					}}
-					onRateChange={(event) => setRate(event.currentTarget.playbackRate)}
+					onRateChange={(event) => {
+						setRate(event.currentTarget.playbackRate);
+						report(event.currentTarget);
+					}}
 					onCanPlay={() => setStatus("")}
 					onPlaying={() => setStatus("")}
 					onWaiting={() => setStatus("Buffering...")}

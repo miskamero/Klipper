@@ -167,6 +167,25 @@ pub(crate) async fn extract(
 }
 
 impl Library {
+    // Disk hits do not acquire the extraction ticket or wait for the media worker.
+    // Every lookup still resolves the library ID against a selected root and live file identity.
+    pub(crate) async fn cached_thumbnail(
+        self: &Arc<Self>,
+        id: i64,
+    ) -> Result<Option<Vec<u8>>, String> {
+        let before = self.database(move |db| db.resolve_file(id)).await?.0;
+        if before.modified_ns.is_none() {
+            return Ok(None);
+        }
+        let key = fingerprint(id, &before)?;
+        let bytes = self.thumbnails.cache(move |cache| cache.get(&key)).await?;
+        let Some(bytes) = bytes.filter(|bytes| valid_image(bytes)) else {
+            return Ok(None);
+        };
+        let after = self.database(move |db| db.resolve_file(id)).await?.0;
+        Ok((before == after).then_some(bytes))
+    }
+
     pub(crate) async fn thumbnail(
         self: &Arc<Self>,
         id: i64,
@@ -261,9 +280,15 @@ pub async fn library_thumbnail(
     recordings: State<'_, crate::commands::RecordingState>,
     file_id: i64,
     request_id: String,
+    cached_only: Option<bool>,
 ) -> Result<tauri::ipc::Response, String> {
+    let library = library.get()?;
+    if cached_only.unwrap_or(false) {
+        return Ok(tauri::ipc::Response::new(
+            library.cached_thumbnail(file_id).await?.unwrap_or_default(),
+        ));
+    }
     let bytes = library
-        .get()?
         .thumbnail(
             file_id,
             request_id,

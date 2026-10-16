@@ -130,6 +130,41 @@ it("keeps load failures visible and retries without falling back to HTML", async
 	expect(invoke).toHaveBeenCalledWith("mpv_control", { id: 1, control: { kind: "reload" } });
 });
 
+it("restores a context paused and applies position, speed, volume and mute before reporting progress", async () => {
+	let state = { ...initial, paused: true, position: 0, muted: false };
+	vi.mocked(invoke).mockImplementation(async (name, args) => {
+		if (name === "mpv_surface" || name === "mpv_overlay") return;
+		const control = (args as { control: { kind: string; value: number | boolean } }).control;
+		if (control.kind === "seek") state = { ...state, position: Number(control.value) };
+		if (control.kind === "speed") state = { ...state, speed: Number(control.value) };
+		if (control.kind === "volume") state = { ...state, volume: Number(control.value) };
+		if (control.kind === "mute") state = { ...state, muted: Boolean(control.value) };
+		return state;
+	});
+	const progress = vi.fn();
+	render(
+		<NativePlayer
+			id={1}
+			selecting={false}
+			initialPosition={{ position: 12, speed: 1.5, volume: 25, muted: true }}
+			onPosition={progress}
+		/>,
+	);
+	await waitFor(() =>
+		expect(progress).toHaveBeenCalledWith({
+			position: 12,
+			speed: 1.5,
+			volume: 25,
+			muted: true,
+		}),
+	);
+	expect(invoke).toHaveBeenCalledWith("mpv_control", { id: 1, control: { kind: "loadPaused" } });
+	expect(invoke).not.toHaveBeenCalledWith("mpv_control", {
+		id: 1,
+		control: { kind: "pause", value: false },
+	});
+});
+
 it("stops and hides the native recording on unmount", async () => {
 	vi.mocked(invoke).mockResolvedValue(initial);
 	const { unmount } = render(<NativePlayer id={1} selecting={false} />);

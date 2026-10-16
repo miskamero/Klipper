@@ -10,9 +10,13 @@ vi.mock("./services/library", async (original) => ({
 	libraryStatus: vi.fn(),
 	queryLibrary: vi.fn(),
 	openLibraryRecording: vi.fn(),
+	addLibraryFolder: vi.fn(),
+	rescanLibraryFolder: vi.fn(),
 }));
 vi.mock("./services/media", () => ({
 	selectRecording: vi.fn(),
+	activateRecording: vi.fn(),
+	deactivateRecording: vi.fn(async () => {}),
 	analyzeRecording: vi.fn(),
 	playbackUrl: (recording: media.Recording) => "asset://synthetic-" + recording.id,
 	errorMessage: String,
@@ -82,10 +86,10 @@ it("starts in Library, opens through authorization and reuses cached analysis", 
 	expect(await screen.findByLabelText(recording.name)).toBeTruthy();
 	expect(library.openLibraryRecording).toHaveBeenCalledWith(501);
 	expect(media.analyzeRecording).not.toHaveBeenCalled();
-	expect(screen.getByRole("button", { name: "Player" }).getAttribute("aria-current")).toBe(
+	expect(screen.getByRole("button", { name: "Library" }).getAttribute("aria-current")).toBe(
 		"page",
 	);
-	fireEvent.click(screen.getByRole("button", { name: "Library" }));
+	fireEvent.click(screen.getByRole("button", { name: "Back to library" }));
 	expect(screen.queryByLabelText(recording.name)).toBeNull();
 	expect(await screen.findByRole("button", { name: "Play " + recording.name })).toBeTruthy();
 });
@@ -138,4 +142,72 @@ it("keeps Library usable after opening a missing recording fails", async () => {
 	expect(screen.getByRole("button", { name: "Library" }).getAttribute("aria-current")).toBe(
 		"page",
 	);
+});
+
+it("keeps library playback in Library and restores exact browsing state through Back to library", async () => {
+	vi.mocked(library.openLibraryRecording).mockResolvedValue({ recording, info });
+	render(<App />);
+	await screen.findByRole("button", { name: "Play " + recording.name });
+	fireEvent.click(screen.getByRole("button", { name: "List view" }));
+	fireEvent.change(screen.getByLabelText("Sort recordings"), { target: { value: "size" } });
+	fireEvent.change(screen.getByLabelText("Search recordings"), {
+		target: { value: "Synthetic" },
+	});
+	await waitFor(() =>
+		expect(library.queryLibrary).toHaveBeenLastCalledWith(
+			expect.objectContaining({ search: "Synthetic", sort: "size" }),
+		),
+	);
+	const browser = screen.getByLabelText("Library recordings");
+	browser.scrollTop = 210;
+	fireEvent.scroll(browser);
+	const card = screen.getByRole("button", { name: "Play " + recording.name });
+	fireEvent.click(card);
+	await screen.findByLabelText(recording.name);
+	expect(screen.getByRole("button", { name: "Library" }).getAttribute("aria-current")).toBe(
+		"page",
+	);
+	expect(screen.getByRole("button", { name: "Player" }).getAttribute("aria-current")).toBeNull();
+	expect(document.querySelectorAll("video")).toHaveLength(1);
+	fireEvent.click(screen.getByRole("button", { name: "Back to library" }));
+	await waitFor(() => expect(media.deactivateRecording).toHaveBeenCalledWith(8));
+	expect(browser.scrollTop).toBe(210);
+	expect(document.activeElement).toBe(card);
+	expect(screen.getByRole("button", { name: "List view" }).getAttribute("aria-pressed")).toBe(
+		"true",
+	);
+	expect((screen.getByLabelText("Search recordings") as HTMLInputElement).value).toBe(
+		"Synthetic",
+	);
+	expect((screen.getByLabelText("Sort recordings") as HTMLSelectElement).value).toBe("size");
+	expect(document.querySelector("video")).toBeNull();
+});
+
+it("preserves an independent one-off selection and waits for cleanup before reactivating it", async () => {
+	const standalone = {
+		id: 1,
+		name: "One-off synthetic.mp4",
+		path: "/synthetic/outside-library.mp4",
+	};
+	vi.mocked(media.selectRecording).mockResolvedValue(standalone);
+	vi.mocked(media.analyzeRecording).mockResolvedValue(info);
+	vi.mocked(media.activateRecording).mockResolvedValue({ ...standalone, id: 9 });
+	vi.mocked(library.openLibraryRecording).mockResolvedValue({ recording, info });
+	render(<App />);
+	fireEvent.click(screen.getByRole("button", { name: "Open recording" }));
+	await screen.findByLabelText(standalone.name);
+	expect(library.openLibraryRecording).not.toHaveBeenCalled();
+	fireEvent.click(screen.getByRole("button", { name: "Library" }));
+	fireEvent.click(await screen.findByRole("button", { name: "Play " + recording.name }));
+	await screen.findByLabelText(recording.name);
+	expect(screen.queryByLabelText(standalone.name)).toBeNull();
+	fireEvent.click(screen.getByRole("button", { name: "Back to library" }));
+	await waitFor(() => expect(media.deactivateRecording).toHaveBeenCalledWith(recording.id));
+	fireEvent.click(screen.getByRole("button", { name: "Player" }));
+	await screen.findByLabelText(standalone.name);
+	expect(media.activateRecording).toHaveBeenCalledWith(1);
+	expect(media.analyzeRecording).toHaveBeenLastCalledWith(9);
+	expect(document.querySelectorAll("video")).toHaveLength(1);
+	expect(library.addLibraryFolder).not.toHaveBeenCalled();
+	expect(library.rescanLibraryFolder).not.toHaveBeenCalled();
 });

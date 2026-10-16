@@ -18,6 +18,8 @@ export default function Thumbnail({
 		null,
 	);
 	const key = JSON.stringify([
+		// A future provider preview must add its source/revision here and in the native cache key.
+		"ffmpeg-320x180-q5-v1",
 		recording.id,
 		recording.size,
 		recording.revision,
@@ -36,24 +38,18 @@ export default function Thumbnail({
 		)
 			return;
 		let cancel: (() => void) | undefined;
-		let url = "";
 		let disposed = false;
 		const clear = () => {
 			cancel?.();
 			cancel = undefined;
-			if (url) URL.revokeObjectURL(url);
-			url = "";
 		};
 		const observer = new IntersectionObserver(
 			([entry]) => {
 				if (entry.isIntersecting) {
 					if (cancel) return;
 					setPreview(null);
-					cancel = thumbnails.request(recording.id, (bytes, error) => {
+					cancel = thumbnails.request(recording.id, key, (url, error) => {
 						if (disposed) return;
-						url = bytes
-							? URL.createObjectURL(new Blob([bytes], { type: "image/jpeg" }))
-							: "";
 						setPreview({ key, url, error });
 					});
 				} else {

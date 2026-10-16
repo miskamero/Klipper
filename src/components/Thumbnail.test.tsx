@@ -51,37 +51,36 @@ afterEach(() => {
 });
 const deliver = (error = "") =>
 	act(() => {
-		vi.mocked(thumbnails.request).mock.calls.at(-1)![1](
-			error ? null : new ArrayBuffer(4),
+		vi.mocked(thumbnails.request).mock.calls.at(-1)![2](
+			error ? "" : "blob:synthetic-preview",
 			error,
 		);
 	});
 
-it("requests only intersecting recordings and releases work and image memory offscreen", () => {
+it("requests only intersecting recordings and releases the preview lease offscreen", () => {
 	render(<Thumbnail recording={source} active root={root} />);
 	expect(thumbnails.request).not.toHaveBeenCalled();
 	expect(screen.getByRole("img", { name: "Preview loading" })).toBeTruthy();
 	act(() => intersect(true));
-	expect(thumbnails.request).toHaveBeenCalledWith(1, expect.any(Function));
+	expect(thumbnails.request).toHaveBeenCalledWith(1, expect.any(String), expect.any(Function));
 	deliver();
 	const image = document.querySelector("img")!;
 	expect(image.getAttribute("src")).toBe("blob:synthetic-preview");
 	expect(image.getAttribute("width")).toBe("320");
 	act(() => intersect(false));
 	expect(cancel).toHaveBeenCalledOnce();
-	expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:synthetic-preview");
 	expect(document.querySelector("img")).toBeNull();
 });
 
 it("invalidates previews after a rescan revision changes and ignores obsolete completion", () => {
 	const { rerender } = render(<Thumbnail recording={source} active root={root} />);
 	act(() => intersect(true));
-	const old = vi.mocked(thumbnails.request).mock.calls[0][1];
+	const old = vi.mocked(thumbnails.request).mock.calls[0][2];
 	deliver();
 	rerender(<Thumbnail recording={{ ...source, revision: "v2" }} active root={root} />);
 	expect(cancel).toHaveBeenCalled();
 	expect(document.querySelector("img")).toBeNull();
-	act(() => old(new ArrayBuffer(4), ""));
+	act(() => old("blob:obsolete-preview", ""));
 	expect(document.querySelector("img")).toBeNull();
 	act(() => intersect(true));
 	expect(thumbnails.request).toHaveBeenCalledTimes(2);

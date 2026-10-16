@@ -1,7 +1,4 @@
-import { useEffect, useRef, useState } from "react";
-import { isTauri } from "@tauri-apps/api/core";
-import { bytes, time } from "../lib/format";
-import { errorMessage } from "../services/media";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
 	addLibraryFolder,
 	cancelLibraryScan,
@@ -14,8 +11,10 @@ import {
 	type LibraryQuery,
 	type LibraryStatus,
 } from "../services/library";
+import { errorMessage } from "../services/media";
+import LibraryBrowser, { type LibraryView } from "./LibraryBrowser";
+import LibraryTools from "./LibraryTools";
 import styles from "./Library.module.scss";
-import Thumbnail from "./Thumbnail";
 
 const initialQuery: LibraryQuery = {
 	search: "",
@@ -26,6 +25,14 @@ const initialQuery: LibraryQuery = {
 	codec: "all",
 	offset: 0,
 };
+const viewKey = "klipper.libraryView";
+function preferredView(): LibraryView {
+	try {
+		return localStorage.getItem(viewKey) === "list" ? "list" : "grid";
+	} catch {
+		return "grid";
+	}
+}
 
 export default function Library({
 	active,
@@ -41,14 +48,20 @@ export default function Library({
 	const [loadedQuery, setLoadedQuery] = useState("");
 	const [query, setQuery] = useState(initialQuery);
 	const [search, setSearch] = useState("");
+	const [view, setView] = useState<LibraryView>(preferredView);
+	const [selectedId, setSelectedId] = useState<number | null>(null);
 	const [revision, setRevision] = useState(0);
 	const [busy, setBusy] = useState(false);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState("");
+	const [dismissedScan, setDismissedScan] = useState("");
 	const list = useRef<HTMLDivElement>(null);
+	const scroll = useRef(0);
+	const previousActive = useRef(active);
 	const alive = useRef(false);
 	const actionPending = useRef(false);
 	const scanning = scanActive(status?.progress.phase ?? "");
+	const queryPending = loadedQuery !== JSON.stringify(query);
 
 	useEffect(() => {
 		alive.current = true;
@@ -56,6 +69,28 @@ export default function Library({
 			alive.current = false;
 		};
 	}, []);
+
+	useEffect(() => {
+		try {
+			localStorage.setItem(viewKey, view);
+		} catch {
+			/* Preferences are optional. */
+		}
+	}, [view]);
+
+	useLayoutEffect(() => {
+		if (active && !previousActive.current && list.current) {
+			list.current.scrollTop = scroll.current;
+			if (selectedId !== null) {
+				list.current
+					.querySelector<HTMLButtonElement>(
+						'button[data-recording-id="' + selectedId + '"]',
+					)
+					?.focus({ preventScroll: true });
+			}
+		}
+		previousActive.current = active;
+	}, [active, selectedId]);
 
 	useEffect(() => {
 		const timer = setTimeout(() => {
@@ -102,11 +137,18 @@ export default function Library({
 		};
 	}, [active, query, revision]);
 
-	function filter(changes: Partial<LibraryQuery>) {
-		setQuery((previous) => ({ ...previous, ...changes, offset: 0 }));
+	function resetScroll() {
+		scroll.current = 0;
 		if (list.current) list.current.scrollTop = 0;
 	}
-
+	function filter(changes: Partial<LibraryQuery>) {
+		setQuery((previous) => ({ ...previous, ...changes, offset: 0 }));
+		resetScroll();
+	}
+	function changePage(offset: number) {
+		setQuery((previous) => ({ ...previous, offset }));
+		resetScroll();
+	}
 	async function action(run: () => Promise<unknown>) {
 		if (actionPending.current) return;
 		actionPending.current = true;
@@ -126,140 +168,49 @@ export default function Library({
 	}
 
 	const progress = status?.progress;
+	const scanKey = JSON.stringify([progress, status?.roots.map((root) => root.lastScan)]);
+	const showScan =
+		progress?.phase &&
+		(scanning ||
+			(dismissedScan !== scanKey &&
+				(progress.issueCount > 0 || ["failed", "cancelled"].includes(progress.phase))));
+	const filtered =
+		!!search || query.rootId !== null || query.filter !== "all" || query.codec !== "all";
+
 	return (
 		<section className={styles.library} hidden={!active} aria-label="Recording library">
-			<div className={styles.heading}>
-				<div>
-					<h1>Library</h1>
-					<p>Your local recordings, in one place.</p>
-				</div>
-				<button
-					className={styles.add}
-					disabled={busy || scanning || !isTauri()}
-					title={
-						scanning
-							? "Finish or cancel this scan before adding another folder"
-							: undefined
-					}
-					onClick={() => void action(addLibraryFolder)}
-				>
-					Add folder
-				</button>
-			</div>
+			<LibraryTools
+				query={query}
+				search={search}
+				view={view}
+				status={status}
+				count={page.total}
+				busy={busy}
+				scanning={scanning}
+				onSearch={(value) => {
+					setSearch(value);
+					resetScroll();
+				}}
+				onFilter={filter}
+				onView={(next) => {
+					setView(next);
+					resetScroll();
+				}}
+				onAdd={() => void action(addLibraryFolder)}
+				onRescan={(id) => void action(() => rescanLibraryFolder(id))}
+				onRemove={(id) =>
+					void action(async () => {
+						await removeLibraryFolder(id);
+						if (alive.current && query.rootId === id) filter({ rootId: null });
+					})
+				}
+			/>
 			{error && (
 				<p className={styles.error} role="alert">
 					{error}
 				</p>
 			)}
-			<div className={styles.filters}>
-				<input
-					type="search"
-					aria-label="Search recordings"
-					placeholder="Search filenames or paths"
-					value={search}
-					maxLength={200}
-					onChange={(event) => {
-						setSearch(event.target.value);
-						if (list.current) list.current.scrollTop = 0;
-					}}
-				/>
-				<select
-					aria-label="Folder source"
-					value={query.rootId ?? ""}
-					onChange={(event) =>
-						filter({ rootId: event.target.value ? Number(event.target.value) : null })
-					}
-				>
-					<option value="">All folders</option>
-					{status?.roots.map((root) => (
-						<option key={root.id} value={root.id}>
-							{root.path}
-						</option>
-					))}
-				</select>
-				<select
-					aria-label="Sort recordings"
-					value={query.sort}
-					onChange={(event) => filter({ sort: event.target.value })}
-				>
-					<option value="date">Modified date</option>
-					<option value="name">Name</option>
-					<option value="duration">Duration</option>
-					<option value="size">File size</option>
-				</select>
-				<button
-					aria-label={query.descending ? "Sort ascending" : "Sort descending"}
-					onClick={() => filter({ descending: !query.descending })}
-				>
-					{query.descending ? "Descending" : "Ascending"}
-				</button>
-				<select
-					aria-label="Indexing status"
-					value={query.filter}
-					onChange={(event) => filter({ filter: event.target.value })}
-				>
-					<option value="all">All statuses</option>
-					<option value="available">Available</option>
-					<option value="missing">Missing</option>
-					<option value="pending">Pending analysis</option>
-					<option value="error">Analysis errors</option>
-				</select>
-				<select
-					aria-label="Video codec"
-					value={query.codec}
-					onChange={(event) => filter({ codec: event.target.value })}
-				>
-					<option value="all">All codecs</option>
-					<option value="hevc">HEVC</option>
-					<option value="h264">H.264</option>
-				</select>
-			</div>
-			{!!status?.roots.length && (
-				<details className={styles.sources}>
-					<summary>
-						Folders <span>{status.roots.length}</span>
-					</summary>
-					<div className={styles.sourceList}>
-						{status.roots.map((root) => (
-							<div className={styles.source} key={root.id}>
-								<div>
-									<strong>{root.path}</strong>
-									<small>
-										{root.recordings} recordings · {root.scanState}
-										{root.lastScan
-											? " · Last scan " +
-												new Date(root.lastScan).toLocaleString()
-											: ""}
-									</small>
-									{root.error && <small>{root.error}</small>}
-								</div>
-								<button
-									disabled={busy || scanning}
-									aria-label={"Rescan " + root.path}
-									onClick={() => void action(() => rescanLibraryFolder(root.id))}
-								>
-									Rescan
-								</button>
-								<button
-									disabled={busy}
-									aria-label={"Remove " + root.path}
-									title="Remove this folder from the library. Recordings remain on disk."
-									onClick={() =>
-										void action(async () => {
-											await removeLibraryFolder(root.id);
-											if (alive.current && query.rootId === root.id)
-												filter({ rootId: null });
-										})
-									}
-								>
-									Remove
-								</button>
-							</div>
-						))}
-					</div>
-				</details>
-			)}
-			{progress?.phase && (
+			{showScan && (
 				<div className={styles.progress} role="status" aria-live="polite">
 					<div>
 						<strong>
@@ -277,11 +228,6 @@ export default function Library({
 								: ""}
 						</span>
 					</div>
-					{scanning && (
-						<button disabled={busy} onClick={() => void action(cancelLibraryScan)}>
-							Cancel scan
-						</button>
-					)}
 					{!!progress.issueCount && (
 						<details>
 							<summary>{progress.issueCount} scan issues</summary>
@@ -295,121 +241,102 @@ export default function Library({
 							)}
 						</details>
 					)}
+					{scanning ? (
+						<button disabled={busy} onClick={() => void action(cancelLibraryScan)}>
+							Cancel scan
+						</button>
+					) : (
+						<button
+							aria-label="Dismiss scan status"
+							onClick={() => setDismissedScan(scanKey)}
+						>
+							Dismiss
+						</button>
+					)}
 				</div>
 			)}
-			<div
-				ref={list}
-				className={styles.list}
-				aria-label="Library recordings"
-				tabIndex={0}
-				aria-busy={loading}
-			>
-				{!page.items.length ? (
-					<div className={styles.empty}>
-						<h2>
-							{loading
-								? "Loading library…"
-								: status?.roots.length
-									? "No matching recordings"
-									: "No folders added"}
-						</h2>
-						<p>
-							{status?.roots.length
-								? "Try another filter or rescan a folder to update its recordings."
-								: "Add a recording folder to discover its videos. Source files stay untouched."}
-						</p>
-						{!isTauri() && <p>Open the desktop app to choose local folders.</p>}
-					</div>
-				) : (
-					<ul>
-						{page.items.map((item) => (
-							<li key={item.id}>
-								<button
-									className={styles.recording}
-									disabled={selecting || item.availability !== "available"}
-									aria-label={"Play " + item.name}
-									onClick={() => onOpen(item.id)}
-								>
-									<Thumbnail
-										recording={item}
-										active={active && loadedQuery === JSON.stringify(query)}
-										root={list}
-									/>
-									<span className={styles.identity}>
-										<strong>{item.name}</strong>
-										<span className={styles.path}>{item.path}</span>
-										{(item.availability !== "available" ||
-											item.status === "error") && (
-											<span className={styles.problem}>
-												{item.error ?? item.availability}
-											</span>
-										)}
-									</span>
-									<span className={styles.media}>
-										<span>
-											{item.duration === null
-												? item.status === "pending"
-													? "Pending analysis"
-													: "—"
-												: time(item.duration)}
-										</span>
-										<small>
-											{[
-												item.width && item.height
-													? item.width + " × " + item.height
-													: null,
-												item.videoCodec?.toUpperCase(),
-											]
-												.filter(Boolean)
-												.join(" · ")}
-										</small>
-									</span>
-									<span className={styles.file}>
-										<span>{bytes(item.size)}</span>
-										<small>
-											{item.modifiedMs === null
-												? "Date unavailable"
-												: new Date(item.modifiedMs).toLocaleDateString()}
-										</small>
-									</span>
-								</button>
-							</li>
-						))}
-					</ul>
-				)}
-			</div>
+			{!loading && !page.items.length ? (
+				<div className={styles.empty}>
+					<svg
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						strokeWidth="1.25"
+						aria-hidden="true"
+					>
+						<rect x="3" y="5" width="18" height="14" rx="2" />
+						<path d="m10 9 5 3-5 3Z" />
+					</svg>
+					<h2>
+						{status?.roots.length
+							? "No matching recordings"
+							: "Your recordings start here"}
+					</h2>
+					<p>
+						{status?.roots.length
+							? "Try a different search or filter, or rescan a folder to find new recordings."
+							: "Add a local folder to browse your recordings. Your source files stay untouched."}
+					</p>
+					{filtered && (
+						<button
+							onClick={() => {
+								setSearch("");
+								filter({ search: "", rootId: null, filter: "all", codec: "all" });
+							}}
+						>
+							Clear search and filters
+						</button>
+					)}
+				</div>
+			) : (
+				<LibraryBrowser
+					items={page.items}
+					view={view}
+					root={list}
+					active={active && !queryPending}
+					loading={loading || queryPending}
+					selecting={selecting || queryPending}
+					selectedId={selectedId}
+					onOpen={(id) => {
+						setSelectedId(id);
+						onOpen(id);
+					}}
+					onScroll={() => {
+						if (active && list.current) scroll.current = list.current.scrollTop;
+					}}
+				/>
+			)}
+			{loading && (
+				<span className={styles.loading} role="status">
+					Loading recordings…
+				</span>
+			)}
 			<footer className={styles.footer}>
 				<span>
-					{page.total} recordings
 					{page.total > 0
-						? " · " +
-							(query.offset + 1) +
+						? query.offset +
+							1 +
 							"–" +
-							Math.min(query.offset + page.limit, page.total)
-						: ""}
+							Math.min(query.offset + page.limit, page.total) +
+							" of " +
+							page.total.toLocaleString() +
+							" recordings"
+						: "No recordings"}
 				</span>
-				<div>
+				<div aria-label="Library pages">
 					<button
 						disabled={query.offset === 0}
-						onClick={() => {
-							setQuery((previous) => ({
-								...previous,
-								offset: Math.max(0, previous.offset - page.limit),
-							}));
-							if (list.current) list.current.scrollTop = 0;
-						}}
+						onClick={() => changePage(Math.max(0, query.offset - page.limit))}
 					>
 						Previous
 					</button>
+					<span>
+						Page {Math.floor(query.offset / page.limit) + 1} of{" "}
+						{Math.max(1, Math.ceil(page.total / page.limit))}
+					</span>
 					<button
 						disabled={query.offset + page.limit >= page.total}
-						onClick={() => {
-							setQuery((previous) => ({
-								...previous,
-								offset: previous.offset + page.limit,
-							}));
-							if (list.current) list.current.scrollTop = 0;
-						}}
+						onClick={() => changePage(query.offset + page.limit)}
 					>
 						Next
 					</button>
