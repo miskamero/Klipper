@@ -1,6 +1,4 @@
-//! Windows development playback, reused from the embedded integration spike.
-#[cfg(not(debug_assertions))]
-compile_error!("mpv-spike is a debug-only experiment");
+//! Embedded Windows playback: one native worker, an owned video surface and fullscreen controls.
 mod api;
 mod cursor;
 mod fullscreen;
@@ -105,8 +103,8 @@ impl NativeState {
     }
 }
 
-pub fn check_development_dll() -> Result<(), String> {
-    if api::development_dll().is_file() {
+pub fn check_library() -> Result<(), String> {
+    if api::library_path()?.is_file() {
         Ok(())
     } else {
         Err(api::missing_dll_message())

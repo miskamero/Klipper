@@ -24,12 +24,5 @@ tokio = { version = "1", features = ["process", "time", "io-util", "fs", "sync",
 [dev-dependencies]
 tempfile = "3"
 
-[features]
-mpv-spike = ["dep:windows-sys"]
-
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61.2", optional = true, features = ["Win32_Foundation", "Win32_System_LibraryLoader", "Win32_System_SystemServices", "Win32_UI_WindowsAndMessaging"] }
-[[bin]]
-name = "klipper-mpv-spike"
-path = "src/bin/mpv-spike.rs"
-required-features = ["mpv-spike"]
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_System_LibraryLoader", "Win32_System_SystemServices", "Win32_UI_WindowsAndMessaging"] }

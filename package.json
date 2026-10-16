@@ -11,14 +11,16 @@
 		"dev": "vite --host 127.0.0.1",
 		"typecheck": "tsc --noEmit",
 		"build": "npm run typecheck && vite build",
-		"test": "vitest run --dir src",
+		"test": "node --test scripts/*.test.mjs && vitest run --dir src",
 		"tauri": "tauri",
-		"desktop": "tauri dev --features mpv-spike",
+		"desktop": "tauri dev",
+		"native:setup": "node scripts/native-deps.mjs install",
+		"native:check": "node scripts/native-deps.mjs",
 		"desktop:build": "tauri build --no-bundle",
 		"desktop:debug": "tauri build --debug --no-bundle",
-		"format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,scss,css,json}\" README.md index.html package.json tsconfig.json vite.config.ts eslint.config.mjs .prettierrc.json \"src-tauri/tauri.conf.json\" \"src-tauri/capabilities/*.json\" \"tooling/eslint/*.{js,json}\"",
-		"format:check": "prettier --check \"src/**/*.{ts,tsx,js,jsx,scss,css,json}\" README.md index.html package.json tsconfig.json vite.config.ts eslint.config.mjs .prettierrc.json \"src-tauri/tauri.conf.json\" \"src-tauri/capabilities/*.json\" \"tooling/eslint/*.{js,json}\"",
-		"lint": "eslint src vite.config.ts eslint.config.mjs tooling/eslint/index.js --max-warnings 0"
+		"format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,scss,css,json}\" README.md index.html package.json tsconfig.json vite.config.ts eslint.config.mjs .prettierrc.json \"src-tauri/tauri.conf.json\" \"src-tauri/capabilities/*.json\" \"tooling/eslint/*.{js,json}\" \"scripts/*.{mjs,json}\"",
+		"format:check": "prettier --check \"src/**/*.{ts,tsx,js,jsx,scss,css,json}\" README.md index.html package.json tsconfig.json vite.config.ts eslint.config.mjs .prettierrc.json \"src-tauri/tauri.conf.json\" \"src-tauri/capabilities/*.json\" \"tooling/eslint/*.{js,json}\" \"scripts/*.{mjs,json}\"",
+		"lint": "eslint src vite.config.ts eslint.config.mjs tooling/eslint/index.js scripts/*.mjs --max-warnings 0"
 	},
 	"dependencies": {
 		"@tauri-apps/api": "^2.0.0",

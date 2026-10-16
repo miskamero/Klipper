@@ -5,6 +5,7 @@ const privateDirectories = [
 	"**/local/**",
 	"**/localBAK/**",
 	"**/.validation/**",
+	"**/native-deps/**",
 	"**/tools/**",
 	"**/.venv/**",
 	"**/.aws/**",

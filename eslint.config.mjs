@@ -10,6 +10,7 @@ export default defineConfig([
 		"localBAK/**",
 		"tools/**",
 		".validation/**",
+		"native-deps/**",
 		".venv/**",
 		"dist/**",
 		"**/target/**",
@@ -35,7 +36,7 @@ export default defineConfig([
 		},
 	},
 	{
-		files: ["eslint.config.mjs", "tooling/eslint/*.js"],
+		files: ["eslint.config.mjs", "tooling/eslint/*.js", "scripts/*.mjs"],
 		extends: [js.configs.recommended],
 		languageOptions: {
 			globals: globals.node,

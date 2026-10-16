@@ -1,4 +1,4 @@
-// libmpv C API binding reused from the verified isolated harness.
+// Minimal libmpv C API binding for the native playback worker.
 // The context is created, used, and destroyed exclusively on the player worker.
 use std::{
     ffi::{c_char, c_void, CStr, CString},
@@ -40,7 +40,7 @@ fn wide(value: &str) -> Vec<u16> {
 
 impl Player {
     pub(super) unsafe fn new(stage: HWND) -> Result<Self, String> {
-        Self::from_dll(stage, &development_dll())
+        Self::from_dll(stage, &library_path()?)
     }
 
     unsafe fn from_dll(stage: HWND, dll: &std::path::Path) -> Result<Self, String> {
@@ -54,8 +54,8 @@ impl Player {
         );
         if library.is_null() {
             return Err(format!(
-                "Could not load libmpv from .validation/mpv-poc/native/libmpv-2.dll (Windows error {}). Check that the approved x64 DLL and its dependencies, including the Vulkan loader required by this build, are available. No system codec extension is needed.",
-                GetLastError()
+                "Could not load libmpv from {} (Windows error {}). Check that the approved x64 DLL and its dependencies, including the Vulkan loader required by this build, are available. No system codec extension is needed.",
+                dll.display(), GetLastError()
             ));
         }
         macro_rules! symbol {
@@ -154,12 +154,35 @@ impl Player {
     }
 }
 
-pub(super) fn development_dll() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../.validation/mpv-poc/native/libmpv-2.dll")
+pub(super) fn library_path() -> Result<PathBuf, String> {
+    #[cfg(debug_assertions)]
+    {
+        Ok(PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../native-deps/windows-x64/libmpv-2.dll"))
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        packaged_library(&std::env::current_exe().map_err(|e| e.to_string())?)
+    }
+}
+
+#[cfg(any(test, not(debug_assertions)))]
+fn packaged_library(executable: &std::path::Path) -> Result<PathBuf, String> {
+    Ok(executable
+        .parent()
+        .ok_or("Application directory unavailable")?
+        .join("libmpv-2.dll"))
 }
 
 pub(super) fn missing_dll_message() -> String {
-    "Native playback is unavailable. Place the approved Windows x64 libmpv-2.dll in .validation/mpv-poc/native/ and retry. The DLL is a local development dependency and is not downloaded automatically. HEVC requires the native player in this environment.".into()
+    #[cfg(debug_assertions)]
+    {
+        "Native playback is unavailable. Run npm run native:setup -- <extracted-libmpv-2.dll> to install the pinned Windows x64 development DLL in native-deps/windows-x64/. It is not downloaded automatically. HEVC requires the native player in this environment.".into()
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        "Native playback is unavailable. The Windows x64 libmpv-2.dll must be beside the Klipper executable, with its required dependencies. Repair the application distribution and retry. It is not downloaded automatically.".into()
+    }
 }
 
 #[cfg(test)]
@@ -171,8 +194,23 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let result = unsafe { Player::from_dll(null_mut(), &directory.path().join("absent.dll")) };
         let error = result.err().expect("missing DLL must fail");
-        assert!(error.contains(".validation/mpv-poc/native/"));
+        #[cfg(debug_assertions)]
+        assert!(error.contains("native-deps/windows-x64/"));
+        #[cfg(not(debug_assertions))]
+        assert!(error.contains("beside the Klipper executable"));
         assert!(error.contains("not downloaded automatically"));
+    }
+    #[test]
+    fn packaged_player_uses_only_the_executable_directory() {
+        let executable = PathBuf::from(r"C:\Portable\Klipper\klipper.exe");
+        assert_eq!(
+            packaged_library(&executable).unwrap(),
+            executable.parent().unwrap().join("libmpv-2.dll")
+        );
+        #[cfg(debug_assertions)]
+        assert!(library_path()
+            .unwrap()
+            .ends_with("native-deps/windows-x64/libmpv-2.dll"));
     }
 }
 

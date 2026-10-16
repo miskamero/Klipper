@@ -3,5 +3,5 @@
 	"description": "Windows playback of explicitly selected recordings through typed native controls.",
 	"windows": ["main"],
 	"platforms": ["windows"],
-	"permissions": ["mpv-spike"]
+	"permissions": ["native-playback"]
 }

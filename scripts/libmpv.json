@@ -1,0 +1,11 @@
+{
+	"platform": "windows-x64",
+	"version": "20261015-git-492bae0768",
+	"releaseUrl": "https://github.com/shinchiro/mpv-winbuild-cmake/releases/tag/20261015",
+	"archiveUrl": "https://github.com/shinchiro/mpv-winbuild-cmake/releases/download/20261015/mpv-dev-x86_64-20261015-git-492bae0768.7z",
+	"archiveSha256": "5db58c1768587b35f2d8daa11b53de4aec58197c00ea1d676f998f183a358ba8",
+	"dllSha256": "154a1610c266563e131c328349af396dd9af693eeb049d0c04ef196324541539",
+	"dllBytes": 121001472,
+	"runtimePrerequisites": ["Windows system DLLs", "vulkan-1.dll for this upstream build"],
+	"distributionNote": "Development binary pin only. Before redistributing, collect and review applicable licenses, corresponding sources and build configuration for mpv and its bundled dependencies."
+}

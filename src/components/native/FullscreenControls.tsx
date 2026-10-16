@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import NativeTransport from "./NativeTransport";
 import type { Control, Snapshot } from "./nativePlayback";
-import styles from "../components/Player.module.scss";
+import styles from "../Player.module.scss";
 
 interface Presentation {
 	snapshot: Snapshot;

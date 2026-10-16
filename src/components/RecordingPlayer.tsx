@@ -4,7 +4,7 @@ import { errorMessage, playbackUrl, type MediaInfo, type Recording } from "../se
 import Player from "./Player";
 import styles from "./Player.module.scss";
 
-const NativePlayer = lazy(() => import("../experimental/NativePlayer"));
+const NativePlayer = lazy(() => import("./native/NativePlayer"));
 
 export default function RecordingPlayer({
 	recording,

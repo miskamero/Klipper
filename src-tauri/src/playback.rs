@@ -9,13 +9,13 @@ pub struct Backend {
 
 #[tauri::command]
 pub fn playback_backend(_app: tauri::AppHandle) -> Backend {
-    #[cfg(all(windows, feature = "mpv-spike"))]
+    #[cfg(windows)]
     {
         use tauri::Manager;
         let result = _app
-            .state::<crate::mpv_spike::NativeState>()
+            .state::<crate::native_player::NativeState>()
             .player()
-            .and_then(|_| crate::mpv_spike::check_development_dll());
+            .and_then(|_| crate::native_player::check_library());
         return match result {
             Ok(()) => Backend {
                 engine: "native",
@@ -26,13 +26,6 @@ pub fn playback_backend(_app: tauri::AppHandle) -> Backend {
                 message: Some(message),
             },
         };
-    }
-    #[cfg(all(windows, not(feature = "mpv-spike")))]
-    {
-        Backend {
-            engine: "unavailable",
-            message: Some("Native playback is not enabled in this Windows build. Run npm run desktop from the repository to enable libmpv. HEVC cannot be played reliably by this machine's system player.".into()),
-        }
     }
     #[cfg(not(windows))]
     {

@@ -3,10 +3,10 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import NativeTransport from "./NativeTransport";
 import type { Control, Snapshot } from "./nativePlayback";
-import styles from "../components/Player.module.scss";
+import styles from "../Player.module.scss";
 import useVideoFullscreen from "./useVideoFullscreen";
 
-// Uses the native worker and embedded surface validated by the integration spike.
+// The native worker owns playback; this component coordinates controls and surface geometry.
 export default function NativePlayer({
 	id,
 	selecting,

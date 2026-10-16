@@ -2,8 +2,8 @@ mod analysis;
 mod commands;
 mod config;
 pub mod media;
-#[cfg(all(windows, feature = "mpv-spike"))]
-mod mpv_spike;
+#[cfg(windows)]
+mod native_player;
 mod playback;
 
 pub fn run() {
@@ -12,22 +12,22 @@ pub fn run() {
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(commands::RecordingState::default());
-    #[cfg(not(all(windows, feature = "mpv-spike")))]
+    #[cfg(not(windows))]
     let builder = builder.invoke_handler(tauri::generate_handler![
         commands::select_recording,
         commands::analyze_recording,
         playback::playback_backend
     ]);
-    #[cfg(all(windows, feature = "mpv-spike"))]
+    #[cfg(windows)]
     let builder = builder
         .setup(|app| {
             let window = app
                 .get_webview_window("main")
                 .ok_or("Missing main window")?;
             // Playback availability must not prevent the shell or file inspection from opening.
-            app.manage(mpv_spike::NativeState(mpv_spike::NativePlayer::start(
-                &window,
-            )));
+            app.manage(native_player::NativeState(
+                native_player::NativePlayer::start(&window),
+            ));
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -40,9 +40,9 @@ pub fn run() {
             commands::select_recording,
             commands::analyze_recording,
             playback::playback_backend,
-            mpv_spike::mpv_control,
-            mpv_spike::mpv_surface,
-            mpv_spike::overlay::mpv_overlay
+            native_player::mpv_control,
+            native_player::mpv_surface,
+            native_player::overlay::mpv_overlay
         ]);
     builder
         .build(tauri::generate_context!())
@@ -51,9 +51,9 @@ pub fn run() {
             if let tauri::RunEvent::ExitRequested { api, code, .. } = event {
                 let analysis = app.state::<commands::RecordingState>().analysis.clone();
                 analysis.stop();
-                #[cfg(all(windows, feature = "mpv-spike"))]
+                #[cfg(windows)]
                 if app
-                    .state::<mpv_spike::NativeState>()
+                    .state::<native_player::NativeState>()
                     .player()
                     .is_ok_and(|player| !player.is_finished())
                 {
@@ -67,7 +67,7 @@ pub fn run() {
                         let cleanup_app = app.clone();
                         let _ = tauri::async_runtime::spawn_blocking(move || {
                             if let Ok(player) =
-                                cleanup_app.state::<mpv_spike::NativeState>().player()
+                                cleanup_app.state::<native_player::NativeState>().player()
                             {
                                 player.shutdown();
                             }

@@ -33,7 +33,7 @@ impl Default for RecordingState {
     }
 }
 
-#[cfg(all(windows, feature = "mpv-spike"))]
+#[cfg(windows)]
 impl RecordingState {
     pub(crate) fn with_selected<T>(
         &self,

@@ -1,6 +1,6 @@
 [[permission]]
-identifier = "mpv-spike"
-description = "Selected-recording playback controls and bounded native video surface for Windows development. No arbitrary commands or file paths."
+identifier = "native-playback"
+description = "Selected-recording playback controls and bounded native video surface. No arbitrary commands or file paths."
 commands.allow = ["mpv_control", "mpv_surface", "mpv_overlay"]
 
 [[permission]]

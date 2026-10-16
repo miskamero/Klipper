@@ -1,6 +1,6 @@
 import type { Ref } from "react";
-import { time } from "../lib/format";
-import styles from "../components/Player.module.scss";
+import { time } from "../../lib/format";
+import styles from "../Player.module.scss";
 import type { Control, Snapshot } from "./nativePlayback";
 
 const rates = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 3];

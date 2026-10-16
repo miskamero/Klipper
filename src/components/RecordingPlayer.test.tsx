@@ -10,7 +10,7 @@ vi.mock("../services/media", () => ({
 	playbackUrl: () => "asset://synthetic",
 	errorMessage: (error: unknown) => (error instanceof Error ? error.message : String(error)),
 }));
-vi.mock("../experimental/NativePlayer", () => ({
+vi.mock("./native/NativePlayer", () => ({
 	default: ({ id }: { id: number }) => <div>Native recording {id}</div>,
 }));
 const recording = { id: 7, name: "Synthetic HEVC.mp4", path: "/synthetic/hevc.mp4" };

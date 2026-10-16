@@ -18,6 +18,9 @@
 !tooling/eslint/
 !tooling/eslint/package.json
 !tooling/eslint/*.js
+!scripts/
+!scripts/*.mjs
+!scripts/*.json
 
 # These exclusions also apply inside otherwise maintained directories.
 **/node_modules/
