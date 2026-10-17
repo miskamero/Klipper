@@ -1,6 +1,14 @@
 import { invoke } from "@tauri-apps/api/core";
 
 export interface MedalMetadata {
+	sourceFormat?: string;
+	localId?: string | null;
+	remoteId?: string | null;
+	contentHasTitle?: boolean | null;
+	remoteTrimStart?: number | null;
+	gameField?: string | null;
+	timestampWarnings?: string[];
+	retainedTimestamps?: string[];
 	title: string | null;
 	titleField: string | null;
 	localTitle: string | null;
@@ -29,6 +37,7 @@ export interface ImportedMetadata {
 	importedMs: number;
 	sourcePath?: string | null;
 	data: MedalMetadata;
+	selectedValues?: Record<string, unknown>;
 }
 export interface ImportRow {
 	index: number;
@@ -40,8 +49,13 @@ export interface ImportRow {
 	status: string;
 	conflict: boolean;
 	warning: boolean;
+	identityConflict?: boolean;
+	timestampWarnings?: string[];
+	differences?: { field: string; existing: unknown; incoming: unknown; existingFormat: string }[];
 }
 export interface ImportPreview {
+	sourceFormat?: string;
+	sourcePath?: string;
 	token: number;
 	catalogEntries: number;
 	total: number;
@@ -57,6 +71,11 @@ export interface ImportPreview {
 		conflicts: number;
 		warnings: number;
 		skipped: number;
+		recovered?: number;
+		identityConflicts?: number;
+		metadataDifferences?: number;
+		timestampWarnings?: number;
+		invalidIdentities?: number;
 	};
 	rows: ImportRow[];
 }
@@ -66,6 +85,8 @@ export interface ImportProgress {
 	total: number;
 	linked: number;
 	error: string;
+	warning?: string;
+	committed?: boolean;
 }
 export const selectMedalCatalog = () => invoke<ImportPreview | null>("medal_select");
 export const medalPreviewPage = (token: number, offset: number) =>

@@ -162,3 +162,117 @@ it("treats an acknowledged cancellation as a status and discards the expired pre
 	expect(screen.queryByRole("alert")).toBeNull();
 	expect(screen.queryByRole("button", { name: "Import metadata only" })).toBeNull();
 });
+
+it("previews SQLite source differences separately from identity conflicts", async () => {
+	vi.mocked(service.selectMedalCatalog).mockResolvedValue({
+		...preview,
+		sourceFormat: "sqlite",
+		sourcePath: "/synthetic/medal.db",
+		counts: {
+			...preview.counts,
+			conflicts: 0,
+			recovered: 1,
+			identityConflicts: 0,
+			metadataDifferences: 1,
+		},
+		rows: [
+			{
+				...preview.rows[0],
+				conflict: false,
+				identityConflict: false,
+				differences: [
+					{
+						field: "game",
+						existing: "JSON game",
+						incoming: "SQLite game",
+						existingFormat: "json",
+					},
+				],
+			},
+		],
+	});
+	render(<MedalImport onClose={vi.fn()} onImported={vi.fn()} />);
+	fireEvent.click(screen.getByRole("button", { name: "Choose catalog" }));
+	await screen.findByText(/Medal SQLite database/);
+	expect(screen.getByText("/synthetic/medal.db")).toBeTruthy();
+	expect(screen.getByText("Newly enriched recordings")).toBeTruthy();
+	expect(screen.getByText(/Source metadata differences/)).toBeTruthy();
+	expect(screen.getByText(/Existing json: JSON game/)).toBeTruthy();
+	expect(screen.queryByText(/Some references contain contradictory/)).toBeNull();
+	expect(service.commitMedalImport).not.toHaveBeenCalled();
+});
+
+it("reports committed metadata truthfully when preview caching is cancelled", async () => {
+	let finish!: (value: service.ImportProgress) => void;
+	vi.mocked(service.commitMedalImport).mockReturnValue(
+		new Promise((resolve) => {
+			finish = resolve;
+		}),
+	);
+	vi.mocked(service.medalImportProgress).mockResolvedValue({
+		phase: "previews",
+		done: 0,
+		total: 2,
+		linked: 1,
+		error: "",
+		committed: true,
+	});
+	const imported = vi.fn();
+	render(<MedalImport onClose={vi.fn()} onImported={imported} />);
+	fireEvent.click(screen.getByRole("button", { name: "Choose catalog" }));
+	await screen.findByText("Imported synthetic title");
+	fireEvent.click(screen.getByRole("button", { name: "Import metadata only" }));
+	await screen.findByText(/Metadata saved/);
+	fireEvent.click(screen.getByRole("button", { name: "Cancel operation" }));
+	await act(async () =>
+		finish({
+			phase: "complete",
+			done: 0,
+			total: 2,
+			linked: 1,
+			error: "",
+			committed: true,
+			warning: "Metadata saved; preview caching cancelled.",
+		}),
+	);
+	expect(await screen.findByText(/Import complete/)).toBeTruthy();
+	expect(screen.queryByText(/No changes were saved/)).toBeNull();
+	expect(imported).toHaveBeenCalledOnce();
+});
+
+it("shows optional timestamp and skipped-identity diagnostics without blocking metadata import", async () => {
+	vi.mocked(service.selectMedalCatalog).mockResolvedValue({
+		...preview,
+		counts: {
+			...preview.counts,
+			conflicts: 0,
+			timestampWarnings: 1,
+			invalidIdentities: 1,
+			skipped: 1,
+		},
+		rows: [
+			{
+				...preview.rows[0],
+				conflict: false,
+				timestampWarnings: [
+					"Local creation time unavailable: expected numeric Unix seconds.",
+				],
+			},
+		],
+	});
+	const imported = vi.fn();
+	render(<MedalImport onClose={vi.fn()} onImported={imported} />);
+	fireEvent.click(screen.getByRole("button", { name: "Choose catalog" }));
+	await screen.findByText("Records with unavailable timestamps");
+	expect(screen.getByText("Skipped invalid identities")).toBeTruthy();
+	expect(screen.getByText(/Valid metadata can still be imported/)).toBeTruthy();
+	expect(
+		screen.getByText(/Entries without a usable local provider identity were skipped/),
+	).toBeTruthy();
+	expect(
+		screen.getByText("Local creation time unavailable: expected numeric Unix seconds."),
+	).toBeTruthy();
+	expect(screen.queryByRole("alert")).toBeNull();
+	fireEvent.click(screen.getByRole("button", { name: "Import metadata only" }));
+	await waitFor(() => expect(imported).toHaveBeenCalledOnce());
+});

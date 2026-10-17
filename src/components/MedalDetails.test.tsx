@@ -58,5 +58,57 @@ it("uses an imported primary title while retaining the actual source filename", 
 });
 it("labels original references as related edits instead of claiming their title belongs to this file", () => {
 	render(<MedalDetails entries={[{ ...entry, relation: "original" }]} />);
-	expect(screen.getByText("Related Medal edit (this file is its original)")).toBeTruthy();
+	expect(screen.getByText(/Related Medal edit \(this file is its original\)/)).toBeTruthy();
+});
+
+it("shows SQLite provenance, retained selections and sanitized extra metadata", () => {
+	render(
+		<MedalDetails
+			entries={[
+				{
+					...entry,
+					selectedValues: { title: "Retained title" },
+					data: {
+						...entry.data,
+						sourceFormat: "sqlite",
+						title: "SQLite title",
+						remoteTrimStart: 2,
+						extra: { bookmarks: [{ time: 3, name: "Synthetic moment" }] },
+					},
+				},
+			]}
+		/>,
+	);
+	expect(screen.getByText(/Imported clip information.*SQLite/)).toBeTruthy();
+	expect(screen.getByText("Local Medal created")).toBeTruthy();
+	expect(screen.getByText("Selected library values from this source")).toBeTruthy();
+	expect(screen.getByText("Retained title")).toBeTruthy();
+	expect(screen.getByText("SQLite title")).toBeTruthy();
+	expect(screen.getByText("Synthetic moment")).toBeTruthy();
+	expect(screen.getByText("Remote trim start")).toBeTruthy();
+});
+
+it("labels retained provider dates instead of presenting an invalid new timestamp as current", () => {
+	render(
+		<MedalDetails
+			entries={[
+				{
+					...entry,
+					data: {
+						...entry.data,
+						sourceFormat: "sqlite",
+						timestampWarnings: ["Local creation time unavailable."],
+						retainedTimestamps: ["createdMs", "contentCreatedMs"],
+					},
+				},
+			]}
+		/>,
+	);
+	expect(screen.getByText("Unavailable source timestamps")).toBeTruthy();
+	expect(screen.getByText("Local creation time unavailable.")).toBeTruthy();
+	expect(
+		screen.getByText(
+			/Using previously imported valid timestamps: local creation, remote content creation/,
+		),
+	).toBeTruthy();
 });

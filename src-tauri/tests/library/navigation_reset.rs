@@ -2,7 +2,7 @@ use super::*;
 use std::time::Duration;
 
 #[test]
-fn direct_folder_gallery_excludes_descendants_and_preserves_pagination_filters_and_overlaps() {
+fn recursive_folder_gallery_preserves_pagination_filters_and_deduplicates_overlaps() {
     let (_temp, mut db, root) = setup();
     let child = Path::new(&root.path).join("child");
     let grandchild = child.join("nested");
@@ -21,15 +21,13 @@ fn direct_folder_gallery_excludes_descendants_and_preserves_pagination_filters_a
     db.discover(root.id, 1, &file).unwrap();
     db.discover(overlap.id, 1, &file).unwrap();
     assert_eq!(db.query(Query::default()).unwrap().total, 47);
-    let direct = db
+    let recursive = db
         .query(Query {
             root_id: Some(root.id),
-            direct_only: true,
             ..Default::default()
         })
         .unwrap();
-    assert_eq!(direct.total, 1);
-    assert_eq!(direct.items[0].name, "root.mp4");
+    assert_eq!(recursive.total, 47);
     let folder = db
         .navigation()
         .unwrap()
@@ -41,13 +39,12 @@ fn direct_folder_gallery_excludes_descendants_and_preserves_pagination_filters_a
     let scope = Query {
         root_id: Some(root.id),
         folder_id: Some(folder.id),
-        direct_only: true,
         sort: "name".into(),
         filter: "pending".into(),
         ..Default::default()
     };
     let first = db.query(scope.clone()).unwrap();
-    assert_eq!(first.total, 45);
+    assert_eq!(first.total, 46);
     assert_eq!(first.items.len(), 40);
     assert_eq!(first.items[0].name, "clip-00.mp4");
     let second = db
@@ -56,8 +53,9 @@ fn direct_folder_gallery_excludes_descendants_and_preserves_pagination_filters_a
             ..scope.clone()
         })
         .unwrap();
-    assert_eq!(second.items.len(), 5);
+    assert_eq!(second.items.len(), 6);
     assert_eq!(second.items[0].name, "clip-40.mp4");
+    assert_eq!(second.items.last().unwrap().name, "deep.mp4");
     assert_eq!(
         db.query(Query {
             search: "clip-01.mp4".into(),
@@ -70,19 +68,12 @@ fn direct_folder_gallery_excludes_descendants_and_preserves_pagination_filters_a
     assert_eq!(
         db.query(Query {
             root_id: Some(overlap.id),
-            direct_only: true,
             ..Default::default()
         })
         .unwrap()
         .total,
-        45
+        46
     );
-    assert!(db
-        .query(Query {
-            direct_only: true,
-            ..Default::default()
-        })
-        .is_err());
 }
 
 fn enrich(db: &mut Db, id: i64, path: &str) {

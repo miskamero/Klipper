@@ -2,7 +2,10 @@ use super::*;
 use crate::library::{db::Db, files, query::Query};
 use serde_json::json;
 use std::fs;
+mod games;
+mod sqlite;
 mod thumbnails;
+mod timestamps;
 
 fn fixture(path: &Path, image: &Path) -> Vec<u8> {
     serde_json::to_vec(&json!({"synthetic-clip-id":{
@@ -221,6 +224,8 @@ fn import_is_idempotent_transactional_persistent_searchable_and_preserves_inspec
     value["synthetic-clip-id"]["originalFilePath"] = json!(original);
     value["new"] = json!({"FilePath":outside,"GameTitle":"New title"});
     let bytes = serde_json::to_vec(&value).unwrap();
+    let catalog_path = temp.path().join("catalog.json");
+    fs::write(&catalog_path, &bytes).unwrap();
     let cancel = AtomicBool::new(false);
     let done = AtomicUsize::new(0);
     let prepare = |db: &Db| {
@@ -238,7 +243,7 @@ fn import_is_idempotent_transactional_persistent_searchable_and_preserves_inspec
     let commit = |db: &mut Db, prepared: &[store::Prepared], additions: &HashSet<usize>| {
         db.commit_medal(store::Commit {
             source: "synthetic-source",
-            path: "synthetic-catalog.json",
+            path: catalog_path.to_str().unwrap(),
             revision: "v1",
             prepared,
             additions,
@@ -291,11 +296,48 @@ fn import_is_idempotent_transactional_persistent_searchable_and_preserves_inspec
     assert!(commit(&mut db, &again, &HashSet::new()).is_err());
     assert_eq!(db.query(Query::default()).unwrap().total, 3);
     cancel.store(false, Ordering::Release);
+    // A normal folder rescan preserves provider-owned metadata and inspected media.
+    let generation = db.begin_scan(root.id).unwrap();
+    db.discover(root.id, generation, &original_file).unwrap();
+    db.discover(root.id, generation, &edited_file).unwrap();
+    db.finish_discovery(root.id, generation, true).unwrap();
+    db.finish_scan(root.id, "complete", None).unwrap();
+    assert_eq!(
+        db.provider_metadata(id).unwrap()[0].data.title.as_deref(),
+        Some("Custom title")
+    );
+    assert!(db.cached(id, &edited_file).unwrap().is_some());
+    let stored: String = db
+        .connection
+        .query_row(
+            "SELECT metadata_json FROM provider_entries WHERE external_id='synthetic-clip-id'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert!(!stored.contains("DO NOT STORE"));
+    fs::rename(&catalog_path, temp.path().join("catalog-unavailable.json")).unwrap();
     db.remove_root(root.id).unwrap();
     assert!(db.resolve_file(id).is_ok());
     drop(db);
     let db = Db::open(&database).unwrap();
     assert_eq!(db.provider_metadata(id).unwrap().len(), 1);
+    assert_eq!(
+        db.query(Query {
+            game: Some("Synthetic game".into()),
+            ..Default::default()
+        })
+        .unwrap()
+        .total,
+        1
+    );
+    assert_eq!(
+        db.provider_metadata(id).unwrap()[0]
+            .data
+            .description
+            .as_deref(),
+        Some("Synthetic description")
+    );
     assert!(db.cached(id, &edited_file).unwrap().is_some());
     assert_eq!(fs::read(&edited).unwrap(), b"synthetic video bytes");
 }
@@ -335,7 +377,7 @@ fn version_one_migration_preserves_existing_library_and_rejects_newer_schemas() 
         db.connection
             .pragma_query_value(None, "user_version", |r| r.get::<_, i64>(0))
             .unwrap(),
-        3
+        4
     );
     assert_eq!(
         db.connection
@@ -347,7 +389,7 @@ fn version_one_migration_preserves_existing_library_and_rejects_newer_schemas() 
         "synthetic-payload"
     );
     db.connection
-        .pragma_update(None, "user_version", 4)
+        .pragma_update(None, "user_version", 5)
         .unwrap();
     drop(db);
     assert!(Db::open(&path).is_err());

@@ -20,12 +20,12 @@ import LibrarySidebar, { sidebarKey } from "./LibrarySidebar";
 import ResetLibrary from "./ResetLibrary";
 import { thumbnails } from "../services/thumbnails";
 import styles from "./Library.module.scss";
-import { CollectionsHome, CollectionLocation, FolderTiles } from "./LibraryCollections";
+import { CollectionsHome, CollectionLocation } from "./LibraryCollections";
 import collectionStyles from "./LibraryCollections.module.scss";
 
 const initialQuery: LibraryQuery = {
 	home: true,
-	directOnly: false,
+	unknownGame: false,
 	search: "",
 	rootId: null,
 	folderId: null,
@@ -57,7 +57,7 @@ function preferredQuery(): LibraryQuery {
 				typeof value.home === "boolean"
 					? value.home
 					: !(rootId || folderId || provider || value.search || value.offset),
-			directOnly: !!(rootId || folderId),
+			unknownGame: value.unknownGame === true,
 			search: typeof value.search === "string" ? value.search.slice(0, 200) : "",
 			rootId,
 			folderId,
@@ -68,7 +68,10 @@ function preferredQuery(): LibraryQuery {
 				? value.filter
 				: "all",
 			codec: ["all", "h264", "hevc"].includes(value.codec) ? value.codec : "all",
-			game: typeof value.game === "string" ? value.game.slice(0, 512) : null,
+			game:
+				value.unknownGame !== true && typeof value.game === "string"
+					? value.game.slice(0, 512)
+					: null,
 			offset:
 				Number.isSafeInteger(value.offset) &&
 				value.offset >= 0 &&
@@ -133,9 +136,6 @@ export default function Library({
 					folder.rootId === query.rootId &&
 					folder.parentId === null,
 		) ?? null;
-	const subfolders = currentFolder
-		? navigation.folders.filter((folder) => folder.parentId === currentFolder.id)
-		: [];
 
 	useEffect(() => {
 		alive.current = true;
@@ -210,7 +210,6 @@ export default function Library({
 						folderId: null,
 						provider: null,
 						home: true,
-						directOnly: false,
 						offset: 0,
 					}));
 					scroll.current = 0;
@@ -303,16 +302,15 @@ export default function Library({
 			provider: null,
 			...changes,
 			home: false,
-			directOnly: !!(changes.rootId || changes.folderId),
 		});
 	}
 	function collectionsHome() {
 		setSelectedId(null);
-		filter({ home: true, rootId: null, folderId: null, provider: null, directOnly: false });
+		filter({ home: true, rootId: null, folderId: null, provider: null });
 	}
 	function clearFilters() {
 		setSearch("");
-		filter({ search: "", filter: "all", codec: "all", game: null });
+		filter({ search: "", filter: "all", codec: "all", game: null, unknownGame: false });
 	}
 	function changePage(offset: number) {
 		setQuery((previous) => ({ ...previous, offset }));
@@ -343,7 +341,12 @@ export default function Library({
 		(scanning ||
 			(dismissedScan !== scanKey &&
 				(progress.issueCount > 0 || ["failed", "cancelled"].includes(progress.phase))));
-	const filtered = !!search || query.filter !== "all" || query.codec !== "all" || !!query.game;
+	const filtered =
+		!!search ||
+		query.filter !== "all" ||
+		query.codec !== "all" ||
+		!!query.game ||
+		!!query.unknownGame;
 
 	return (
 		<section className={styles.library} hidden={!active} aria-label="Recording library">
@@ -374,6 +377,7 @@ export default function Library({
 					count={home ? navigation.total : page.total}
 					home={home}
 					games={page.games ?? []}
+					unknownGameAvailable={page.unknownGameAvailable ?? false}
 					onImport={() => setImporting(true)}
 					onReset={() => setConfirmReset(true)}
 					busy={busy}
@@ -506,30 +510,17 @@ export default function Library({
 					>
 						{currentFolder && (
 							<>
-								{subfolders.length > 0 && (
-									<section
-										className={collectionStyles.folders}
-										aria-label="Subfolders"
-									>
-										<h2>Folders</h2>
-										<FolderTiles
-											folders={subfolders}
-											onSelect={selectCollection}
-										/>
-									</section>
-								)}
 								<h2 className={collectionStyles.recordingsHeading}>
-									Recordings in this folder
+									Recordings in this folder and subfolders
 								</h2>
 								<p className={collectionStyles.caption}>
-									Search and filters apply to recordings directly in this folder.
-									Folder tile counts include descendants.
+									Search and filters include all indexed subfolders.
 								</p>
 								{!loading && !queryPending && !page.items.length && (
 									<p>
 										{filtered
 											? "No matching recordings in this folder."
-											: "No recordings directly in this folder. Open a subfolder to continue browsing."}
+											: "No indexed recordings in this folder or its subfolders."}
 									</p>
 								)}
 								{!loading && !queryPending && !page.items.length && filtered && (

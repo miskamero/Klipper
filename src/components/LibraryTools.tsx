@@ -29,6 +29,7 @@ export default function LibraryTools({
 	onRemove,
 	onImport,
 	games,
+	unknownGameAvailable,
 	onReset,
 	home,
 }: {
@@ -47,6 +48,7 @@ export default function LibraryTools({
 	onRemove: (id: number) => void;
 	onImport: () => void;
 	games: string[];
+	unknownGameAvailable: boolean;
 	onReset: () => void;
 	home: boolean;
 }) {
@@ -54,7 +56,9 @@ export default function LibraryTools({
 	const filtersButton = useRef<HTMLButtonElement>(null);
 	const foldersButton = useRef<HTMLButtonElement>(null);
 	const filterCount =
-		Number(query.codec !== "all") + Number(query.filter !== "all") + Number(!!query.game);
+		Number(query.codec !== "all") +
+		Number(query.filter !== "all") +
+		Number(!!query.game || !!query.unknownGame);
 	const roots = status?.roots ?? [];
 
 	function toggle(next: "filters" | "folders") {
@@ -69,7 +73,7 @@ export default function LibraryTools({
 					<span>
 						{count.toLocaleString()} {count === 1 ? "recording" : "recordings"}
 						{!home && (search || filterCount) ? " found" : ""}
-						{!home && query.directOnly ? " in this folder" : ""}
+						{!home && query.rootId !== null ? " including subfolders" : ""}
 					</span>
 				</div>
 				<div className={styles.headingActions}>
@@ -207,9 +211,15 @@ export default function LibraryTools({
 							)}
 							{query.filter !== "all" && <span>Status: {query.filter}</span>}
 							{query.game && <span>Game: {query.game}</span>}
+							{query.unknownGame && <span>Game: Unknown game</span>}
 							<button
 								onClick={() =>
-									onFilter({ filter: "all", codec: "all", game: null })
+									onFilter({
+										filter: "all",
+										codec: "all",
+										game: null,
+										unknownGame: false,
+									})
 								}
 							>
 								Clear filters
@@ -227,19 +237,43 @@ export default function LibraryTools({
 							}
 						}}
 					>
-						{games.length > 0 && (
+						{(games.length > 0 ||
+							unknownGameAvailable ||
+							query.game ||
+							query.unknownGame) && (
 							<label>
 								Game
 								<select
 									aria-label="Game"
-									value={query.game ?? ""}
+									value={
+										query.unknownGame
+											? "unknown"
+											: query.game
+												? "game:" + query.game
+												: ""
+									}
 									onChange={(event) =>
-										onFilter({ game: event.target.value || null })
+										onFilter({
+											game: event.target.value.startsWith("game:")
+												? event.target.value.slice(5)
+												: null,
+											unknownGame: event.target.value === "unknown",
+										})
 									}
 								>
 									<option value="">All games</option>
+									{(unknownGameAvailable || query.unknownGame) && (
+										<option value="unknown" disabled={!unknownGameAvailable}>
+											Unknown game
+										</option>
+									)}
+									{query.game && !games.includes(query.game) && (
+										<option value={"game:" + query.game} disabled>
+											{query.game} (not in this collection)
+										</option>
+									)}
 									{games.map((game) => (
-										<option key={game} value={game}>
+										<option key={game} value={"game:" + game}>
 											{game}
 										</option>
 									))}
@@ -274,7 +308,14 @@ export default function LibraryTools({
 						</label>
 						<button
 							disabled={!filterCount}
-							onClick={() => onFilter({ filter: "all", codec: "all", game: null })}
+							onClick={() =>
+								onFilter({
+									filter: "all",
+									codec: "all",
+									game: null,
+									unknownGame: false,
+								})
+							}
 						>
 							Clear filters
 						</button>

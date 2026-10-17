@@ -466,7 +466,7 @@ it("shows imported titles and games, keeps filenames inspectable, and filters by
 	const card = await screen.findByRole("button", { name: "Play Custom synthetic title" });
 	expect(card.title).toContain(item.name);
 	fireEvent.click(screen.getByRole("button", { name: /^Filters/ }));
-	fireEvent.change(screen.getByLabelText("Game"), { target: { value: "Synthetic game" } });
+	fireEvent.change(screen.getByLabelText("Game"), { target: { value: "game:Synthetic game" } });
 	await waitFor(() =>
 		expect(service.queryLibrary).toHaveBeenLastCalledWith(
 			expect.objectContaining({ game: "Synthetic game", offset: 0 }),
@@ -631,7 +631,6 @@ it("starts on an empty Collections homepage with a collapsed sidebar and no thum
 				home: false,
 				rootId: null,
 				provider: null,
-				directOnly: false,
 			}),
 		),
 	);
@@ -639,11 +638,11 @@ it("starts on an empty Collections homepage with a collapsed sidebar and no thum
 	expect(screen.getByLabelText("Collections homepage")).toBeTruthy();
 });
 
-it("browses folder tiles and breadcrumbs without flattening descendants and restores playback origin", async () => {
+it("opens recursive folder galleries without subfolder tiles and restores playback origin", async () => {
 	localStorage.clear();
-	vi.mocked(service.queryLibrary).mockImplementation(async (query) => ({
-		items: query.folderId ? [item] : [],
-		total: query.folderId ? 1 : 0,
+	vi.mocked(service.queryLibrary).mockImplementation(async () => ({
+		items: [item],
+		total: 1,
 		limit: 40,
 	}));
 	const open = vi.fn();
@@ -652,21 +651,23 @@ it("browses folder tiles and breadcrumbs without flattening descendants and rest
 	fireEvent.click(within(home).getByTitle(root.path));
 	await waitFor(() =>
 		expect(service.queryLibrary).toHaveBeenLastCalledWith(
-			expect.objectContaining({ rootId: 7, directOnly: true, home: false }),
-		),
-	);
-	expect(screen.queryByRole("button", { name: "Play " + item.name })).toBeNull();
-	fireEvent.click(
-		within(screen.getByRole("region", { name: "Subfolders" })).getByTitle(
-			root.path + "/nested",
+			expect.objectContaining({ rootId: 7, home: false }),
 		),
 	);
 	await screen.findByRole("button", { name: "Play " + item.name });
+	expect(screen.queryByRole("region", { name: "Subfolders" })).toBeNull();
+	fireEvent.click(screen.getByRole("button", { name: "Show library sidebar" }));
+	fireEvent.click(
+		within(screen.getByRole("complementary")).getByRole("button", {
+			name: "Expand recordings",
+		}),
+	);
+	fireEvent.click(within(screen.getByRole("complementary")).getByTitle(root.path + "/nested"));
+	await screen.findByRole("button", { name: "Play " + item.name });
 	expect(service.queryLibrary).toHaveBeenLastCalledWith(
-		expect.objectContaining({ rootId: 7, folderId: "7:1:1", directOnly: true }),
+		expect.objectContaining({ rootId: 7, folderId: "7:1:1" }),
 	);
 	const browser = screen.getByLabelText("Library recordings");
-	fireEvent.click(screen.getByRole("button", { name: "Show library sidebar" }));
 	expect(
 		within(screen.getByRole("complementary"))
 			.getByTitle(root.path + "/nested")
@@ -686,11 +687,128 @@ it("browses folder tiles and breadcrumbs without flattening descendants and rest
 	fireEvent.click(breadcrumbs.getByRole("button", { name: "recordings" }));
 	await waitFor(() =>
 		expect(service.queryLibrary).toHaveBeenLastCalledWith(
-			expect.objectContaining({ rootId: 7, folderId: null, directOnly: true, offset: 0 }),
+			expect.objectContaining({ rootId: 7, folderId: null, offset: 0 }),
 		),
 	);
 	fireEvent.click(screen.getByRole("button", { name: "← Collections" }));
 	expect(screen.getByLabelText("Collections homepage")).toBeTruthy();
+});
+
+it("combines Unknown game with other filters and preserves it across collections, playback and restart", async () => {
+	vi.mocked(service.queryLibrary).mockResolvedValue({
+		items: [item],
+		total: 43,
+		limit: 40,
+		games: ["Arena"],
+		unknownGameAvailable: true,
+	});
+	// Old direct-folder preferences must not survive the recursive-browsing change.
+	localStorage.setItem(
+		"klipper.libraryBrowsing",
+		JSON.stringify({ home: false, rootId: 7, directOnly: true }),
+	);
+	const open = vi.fn();
+	const { rerender, unmount } = render(<Library active selecting={false} onOpen={open} />);
+	await screen.findByRole("button", { name: "Play " + item.name });
+	expect(service.queryLibrary).toHaveBeenLastCalledWith(
+		expect.not.objectContaining({ directOnly: true }),
+	);
+	fireEvent.click(screen.getByRole("button", { name: /^Filters/ }));
+	fireEvent.change(screen.getByLabelText("Game"), { target: { value: "unknown" } });
+	fireEvent.change(screen.getByLabelText("Video codec"), { target: { value: "hevc" } });
+	fireEvent.change(screen.getByLabelText("Indexing status"), { target: { value: "available" } });
+	fireEvent.change(screen.getByLabelText("Search recordings"), {
+		target: { value: "Synthetic" },
+	});
+	await waitFor(() =>
+		expect(service.queryLibrary).toHaveBeenLastCalledWith(
+			expect.objectContaining({
+				rootId: 7,
+				unknownGame: true,
+				game: null,
+				codec: "hevc",
+				filter: "available",
+				search: "Synthetic",
+				offset: 0,
+			}),
+		),
+	);
+	fireEvent.click(screen.getByRole("button", { name: "Next" }));
+	await waitFor(() =>
+		expect(service.queryLibrary).toHaveBeenLastCalledWith(
+			expect.objectContaining({ offset: 40, unknownGame: true }),
+		),
+	);
+	fireEvent.click(
+		within(screen.getByRole("complementary")).getByRole("button", { name: /^Medal/ }),
+	);
+	await waitFor(() =>
+		expect(service.queryLibrary).toHaveBeenLastCalledWith(
+			expect.objectContaining({
+				provider: "medal",
+				rootId: null,
+				offset: 0,
+				unknownGame: true,
+				search: "Synthetic",
+			}),
+		),
+	);
+	fireEvent.click(screen.getByRole("button", { name: "Play " + item.name }));
+	rerender(<Library active={false} selecting={false} onOpen={open} />);
+	rerender(<Library active selecting={false} onOpen={open} />);
+	expect((screen.getByLabelText("Game") as HTMLSelectElement).value).toBe("unknown");
+	unmount();
+	render(<Library active selecting={false} onOpen={open} />);
+	await screen.findByRole("button", { name: "Play " + item.name });
+	fireEvent.click(screen.getByRole("button", { name: /^Filters/ }));
+	expect((screen.getByLabelText("Game") as HTMLSelectElement).value).toBe("unknown");
+	fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
+	await waitFor(() =>
+		expect(service.queryLibrary).toHaveBeenLastCalledWith(
+			expect.objectContaining({
+				game: null,
+				unknownGame: false,
+				codec: "all",
+				filter: "all",
+				offset: 0,
+			}),
+		),
+	);
+});
+
+it("uses collection game facets and keeps an unavailable selected game explicit and clearable", async () => {
+	vi.mocked(service.queryLibrary).mockImplementation(async (query) => ({
+		items: query.provider ? [] : [item],
+		total: query.provider ? 0 : 1,
+		limit: 40,
+		games: query.provider ? ["Other game"] : ["unknown"],
+		unknownGameAvailable: false,
+	}));
+	render(<Library active selecting={false} onOpen={vi.fn()} />);
+	await screen.findByRole("button", { name: "Play " + item.name });
+	fireEvent.click(screen.getByRole("button", { name: /^Filters/ }));
+	fireEvent.change(screen.getByLabelText("Game"), { target: { value: "game:unknown" } });
+	await waitFor(() =>
+		expect(service.queryLibrary).toHaveBeenLastCalledWith(
+			expect.objectContaining({ game: "unknown", unknownGame: false }),
+		),
+	);
+	fireEvent.click(
+		within(screen.getByRole("complementary")).getByRole("button", { name: /^Medal/ }),
+	);
+	await screen.findByText("No matching recordings");
+	expect(screen.getByRole("option", { name: "unknown (not in this collection)" })).toHaveProperty(
+		"disabled",
+		true,
+	);
+	expect(screen.getByRole("option", { name: "Other game" })).toBeTruthy();
+	expect(screen.queryByRole("option", { name: "Unknown game" })).toBeNull();
+	fireEvent.change(screen.getByLabelText("Game"), { target: { value: "" } });
+	await waitFor(() =>
+		expect(service.queryLibrary).toHaveBeenLastCalledWith(
+			expect.objectContaining({ game: null, unknownGame: false }),
+		),
+	);
 });
 
 it("shows multiple real root and provider tiles and synchronizes main navigation with saved sidebar choices", async () => {
@@ -725,7 +843,7 @@ it("shows multiple real root and provider tiles and synchronizes main navigation
 	fireEvent.click(sidebar.getByRole("button", { name: /^Medal/ }));
 	await waitFor(() =>
 		expect(service.queryLibrary).toHaveBeenLastCalledWith(
-			expect.objectContaining({ provider: "medal", rootId: null, directOnly: false }),
+			expect.objectContaining({ provider: "medal", rootId: null }),
 		),
 	);
 	unmount();

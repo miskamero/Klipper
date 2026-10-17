@@ -66,7 +66,7 @@ impl Db {
         let version: i64 = connection
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .map_err(error)?;
-        if version > 3 {
+        if version > 4 {
             return Err("Library database was created by a newer Klipper version".into());
         }
         if version == 0 {
@@ -84,6 +84,12 @@ impl Db {
         if version < 3 {
             let tx = connection.transaction().map_err(error)?;
             tx.execute_batch(include_str!("migrations/003.sql"))
+                .map_err(error)?;
+            tx.commit().map_err(error)?;
+        }
+        if version < 4 {
+            let tx = connection.transaction().map_err(error)?;
+            tx.execute_batch(include_str!("migrations/004.sql"))
                 .map_err(error)?;
             tx.commit().map_err(error)?;
         }

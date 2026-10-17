@@ -19,6 +19,9 @@ pub struct Row {
     pub status: String,
     pub conflict: bool,
     pub warning: bool,
+    pub identity_conflict: bool,
+    pub differences: Vec<super::selection::Difference>,
+    pub timestamp_warnings: Vec<String>,
 }
 #[derive(Default, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -33,6 +36,11 @@ pub struct Counts {
     pub conflicts: usize,
     pub warnings: usize,
     pub skipped: usize,
+    pub recovered: usize,
+    pub identity_conflicts: usize,
+    pub metadata_differences: usize,
+    pub timestamp_warnings: usize,
+    pub invalid_identities: usize,
 }
 #[derive(Clone)]
 pub struct Reference {
@@ -50,10 +58,13 @@ pub struct Index {
     identities: HashMap<String, i64>,
     fingerprints: HashMap<i64, Option<String>>,
     previous: HashMap<String, String>,
+    previous_dates: HashMap<String, [Option<i64>; 3]>,
     other_titles: HashMap<i64, HashSet<String>>,
     other_games: HashMap<i64, HashSet<String>>,
     historical: Vec<(i64, String, Option<String>, Option<String>)>,
     previous_images: HashMap<(String, String), (String, String)>,
+    other_claims: HashMap<i64, Vec<super::parse::Metadata>>,
+    associated: HashSet<i64>,
 }
 impl Db {
     pub fn cached_medal_catalog(
@@ -106,7 +117,11 @@ impl Db {
         if entries.len() != ids.len() {
             return Ok(None);
         }
-        Ok(Some(super::parse::Catalog { entries, skipped }))
+        Ok(Some(super::parse::Catalog {
+            entries,
+            skipped,
+            invalid_identities: 0,
+        }))
     }
     pub fn medal_index(&self, source: &str) -> Result<Index, String> {
         let mut index = Index {
@@ -114,10 +129,13 @@ impl Db {
             identities: HashMap::new(),
             fingerprints: HashMap::new(),
             previous: HashMap::new(),
+            previous_dates: HashMap::new(),
             other_titles: HashMap::new(),
             other_games: HashMap::new(),
             historical: Vec::new(),
             previous_images: HashMap::new(),
+            other_claims: HashMap::new(),
+            associated: HashSet::new(),
         };
         let mut s=self.connection.prepare("SELECT l.path,f.id,f.identity FROM locations l JOIN recordings f ON f.id=l.file_id").map_err(|e|e.to_string())?;
         for row in s
@@ -139,28 +157,44 @@ impl Db {
             }
             index.fingerprints.insert(id, identity);
         }
-        let mut s=self.connection.prepare("SELECT e.external_id,e.revision FROM provider_entries e JOIN sources s ON s.id=e.source_id WHERE s.kind='medal' AND s.external_key=?1").map_err(|e|e.to_string())?;
+        let mut s=self.connection.prepare("SELECT e.external_id,e.revision,e.created_ms,json_extract(e.metadata_json,'$.contentCreatedMs'),json_extract(e.metadata_json,'$.lastEditMs') FROM provider_entries e JOIN sources s ON s.id=e.source_id WHERE s.kind='medal' AND s.external_key=?1").map_err(|e|e.to_string())?;
         for row in s
             .query_map([source], |r| {
-                Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    [
+                        r.get::<_, Option<i64>>(2)?,
+                        r.get::<_, Option<i64>>(3)?,
+                        r.get::<_, Option<i64>>(4)?,
+                    ],
+                ))
             })
             .map_err(|e| e.to_string())?
         {
-            let (id, revision) = row.map_err(|e| e.to_string())?;
-            index.previous.insert(id, revision);
+            let (id, revision, dates) = row.map_err(|e| e.to_string())?;
+            index.previous.insert(id.clone(), revision);
+            index.previous_dates.insert(
+                id,
+                dates.map(|v| v.filter(|n| *n > 0 && *n < super::parse::MAX_TIMESTAMP_MS)),
+            );
         }
-        let mut s=self.connection.prepare("SELECT l.file_id,e.title,e.game FROM provider_links l JOIN provider_entries e ON e.source_id=l.source_id AND e.external_id=l.external_id JOIN sources s ON s.id=e.source_id WHERE s.external_key<>?1 AND l.relation='primary'").map_err(|e|e.to_string())?;
+        let mut s=self.connection.prepare("SELECT l.file_id,e.title,e.game,e.metadata_json FROM provider_links l JOIN provider_entries e ON e.source_id=l.source_id AND e.external_id=l.external_id JOIN sources s ON s.id=e.source_id WHERE s.kind='medal' AND s.external_key<>?1 AND l.relation='primary'").map_err(|e|e.to_string())?;
         for row in s
             .query_map([source], |r| {
                 Ok((
                     r.get::<_, i64>(0)?,
                     r.get::<_, Option<String>>(1)?,
                     r.get::<_, Option<String>>(2)?,
+                    r.get::<_, String>(3)?,
                 ))
             })
             .map_err(|e| e.to_string())?
         {
-            let (id, title, game) = row.map_err(|e| e.to_string())?;
+            let (id, title, game, json) = row.map_err(|e| e.to_string())?;
+            if let Ok(data) = serde_json::from_str(&json) {
+                index.other_claims.entry(id).or_default().push(data);
+            }
             if let Some(title) = title {
                 index.other_titles.entry(id).or_default().insert(title);
             }
@@ -168,6 +202,12 @@ impl Db {
                 index.other_games.entry(id).or_default().insert(game);
             }
         }
+        let mut associated=self.connection.prepare("SELECT DISTINCT l.file_id FROM provider_links l JOIN sources s ON s.id=l.source_id WHERE s.kind='medal' AND l.relation='primary'").map_err(|e|e.to_string())?;
+        index.associated = associated
+            .query_map([], |r| r.get(0))
+            .map_err(|e| e.to_string())?
+            .collect::<Result<_, _>>()
+            .map_err(|e| e.to_string())?;
         let mut statement=self.connection.prepare("SELECT l.file_id,e.external_id,e.title,e.game FROM provider_links l JOIN provider_entries e ON e.source_id=l.source_id AND e.external_id=l.external_id JOIN sources s ON s.id=e.source_id WHERE s.kind='medal' AND s.external_key=?1 AND l.relation='primary'").map_err(|e|e.to_string())?;
         index.historical = statement
             .query_map([source], |r| {
@@ -196,6 +236,13 @@ pub fn prepare(
     done: &AtomicUsize,
 ) -> Result<(Vec<Prepared>, Counts), String> {
     let incoming: HashSet<_> = entries.iter().map(|entry| entry.id.clone()).collect();
+    let complementary = entries.iter().any(|e| e.data.source_format == "sqlite")
+        || index
+            .other_claims
+            .values()
+            .flatten()
+            .any(|m| m.source_format == "sqlite");
+    let mut recovered = HashSet::new();
     let mut prepared = Vec::new();
     let mut counts = Counts::default();
     let mut next = 0;
@@ -204,6 +251,27 @@ pub fn prepare(
     for mut entry in entries {
         if cancel.load(Ordering::Acquire) {
             return Err("Import cancelled".into());
+        }
+        if !entry.data.timestamp_warnings.is_empty() {
+            counts.timestamp_warnings += 1;
+        }
+        if let Some(previous) = index.previous_dates.get(&entry.id) {
+            for (field, incoming, prior) in [
+                ("createdMs", &mut entry.data.created_ms, previous[0]),
+                (
+                    "contentCreatedMs",
+                    &mut entry.data.content_created_ms,
+                    previous[1],
+                ),
+                ("lastEditMs", &mut entry.data.last_edit_ms, previous[2]),
+            ] {
+                if incoming.is_none() && prior.is_some() {
+                    *incoming = prior;
+                    if !entry.data.retained_timestamps.iter().any(|v| v == field) {
+                        entry.data.retained_timestamps.push(field.into());
+                    }
+                }
+            }
         }
         let mut references = Vec::new();
         let mut image_reference = |relation: &str, path: Option<&str>| {
@@ -255,6 +323,7 @@ pub fn prepare(
                 }
             }
             let mut conflict = relation == "primary" && entry.data.game_conflict;
+            let mut identity_conflict = candidates.len() > 1;
             let warning = relation == "primary" && entry.data.game_lookup_ambiguous;
             let mut file_id = if candidates.len() == 1 {
                 candidates.iter().next().copied()
@@ -265,6 +334,7 @@ pub fn prepare(
                 if index.fingerprints.get(&id) != Some(&file.identity) {
                     file_id = None;
                     conflict = true;
+                    identity_conflict = true;
                 }
             }
             let status = if candidates.len() > 1 {
@@ -306,6 +376,27 @@ pub fn prepare(
             } else {
                 original_image.clone()
             };
+            let differences = if relation == "primary" {
+                file_id
+                    .and_then(|id| index.other_claims.get(&id))
+                    .into_iter()
+                    .flatten()
+                    .flat_map(|prior| super::selection::differences(prior, &entry.data))
+                    .collect::<Vec<_>>()
+            } else {
+                Vec::new()
+            };
+            if !differences.is_empty() {
+                counts.metadata_differences += 1;
+            }
+            if identity_conflict {
+                counts.identity_conflicts += 1;
+            }
+            if relation == "primary" {
+                if let Some(id) = file_id.filter(|id| !index.associated.contains(id)) {
+                    recovered.insert(id);
+                }
+            }
             references.push(Reference {
                 row: Row {
                     index: next,
@@ -321,6 +412,13 @@ pub fn prepare(
                     status: status.into(),
                     conflict,
                     warning,
+                    identity_conflict,
+                    differences,
+                    timestamp_warnings: if relation == "primary" {
+                        entry.data.timestamp_warnings.clone()
+                    } else {
+                        Vec::new()
+                    },
                 },
                 file_id,
                 file,
@@ -343,10 +441,10 @@ pub fn prepare(
             })
         })
     };
-    for (id, values) in index.other_titles {
+    for (id, values) in index.other_titles.into_iter().filter(|_| !complementary) {
         titles.insert(format!("id:{id}"), values);
     }
-    for (id, values) in index.other_games {
+    for (id, values) in index.other_games.into_iter().filter(|_| !complementary) {
         games.insert(format!("id:{id}"), values);
     }
     for (id, external_id, title, game) in index.historical {
@@ -389,6 +487,7 @@ pub fn prepare(
             }
         }
     }
+    counts.recovered = recovered.len();
     Ok((prepared, counts))
 }
 
@@ -460,6 +559,7 @@ impl Db {
         let mut checked_files = HashMap::new();
         let mut checked_images: HashMap<String, Option<(String, String)>> = HashMap::new();
         let mut linked = 0;
+        let mut affected = HashSet::new();
         for prepared in commit.prepared {
             if commit.cancel.load(Ordering::Acquire) {
                 return Err("Import cancelled; no changes were saved.".into());
@@ -467,18 +567,25 @@ impl Db {
             let entry = &prepared.entry;
             let metadata_json =
                 serde_json::to_string(&entry.data).map_err(|_| "Could not serialize metadata")?;
-            tx.execute("INSERT INTO provider_entries(source_id,external_id,revision,title,game,created_ms,metadata_json,imported_ms) VALUES(?1,?2,?3,?4,?5,?6,?8,?7) ON CONFLICT(source_id,external_id) DO UPDATE SET revision=excluded.revision,title=excluded.title,game=excluded.game,created_ms=excluded.created_ms,metadata_json=excluded.metadata_json,imported_ms=excluded.imported_ms WHERE provider_entries.revision<>excluded.revision",params![source,entry.id,entry.revision,entry.data.title,entry.data.game,entry.data.created_ms,now,metadata_json]).map_err(|e|e.to_string())?;
+            let changed=tx.execute("INSERT INTO provider_entries(source_id,external_id,revision,title,game,created_ms,metadata_json,imported_ms) VALUES(?1,?2,?3,?4,?5,?6,?8,?7) ON CONFLICT(source_id,external_id) DO UPDATE SET revision=excluded.revision,title=excluded.title,game=excluded.game,created_ms=excluded.created_ms,metadata_json=excluded.metadata_json,imported_ms=excluded.imported_ms WHERE provider_entries.revision<>excluded.revision",params![source,entry.id,entry.revision,entry.data.title,entry.data.game,entry.data.created_ms,now,metadata_json]).map_err(|e|e.to_string())?;
             // Only this provider record's associations are refreshed; historical files/media survive.
-            tx.execute(
-                "DELETE FROM provider_links WHERE source_id=?1 AND external_id=?2",
-                params![source, entry.id],
-            )
-            .map_err(|e| e.to_string())?;
-            tx.execute(
-                "DELETE FROM provider_previews WHERE source_id=?1 AND external_id=?2",
-                params![source, entry.id],
-            )
-            .map_err(|e| e.to_string())?;
+            if changed > 0
+                || prepared
+                    .references
+                    .iter()
+                    .any(|r| r.row.status != "unchanged")
+            {
+                tx.execute(
+                    "DELETE FROM provider_links WHERE source_id=?1 AND external_id=?2",
+                    params![source, entry.id],
+                )
+                .map_err(|e| e.to_string())?;
+                tx.execute(
+                    "DELETE FROM provider_previews WHERE source_id=?1 AND external_id=?2",
+                    params![source, entry.id],
+                )
+                .map_err(|e| e.to_string())?;
+            }
             for reference in &prepared.references {
                 let id = if let Some(id) = reference.file_id {
                     let expected: Option<String> = tx
@@ -509,16 +616,17 @@ impl Db {
                     None
                 };
                 if let Some(id) = id {
+                    affected.insert(id);
                     tx.execute(
-                        "INSERT OR IGNORE INTO provider_links(source_id,external_id,file_id,relation,file_size,file_modified_ns) SELECT ?1,?2,id,?4,coalesce(?5,size),CASE WHEN ?5 IS NULL THEN modified_ns ELSE ?6 END FROM recordings WHERE id=?3",
+                        "INSERT INTO provider_links(source_id,external_id,file_id,relation,file_size,file_modified_ns) SELECT ?1,?2,id,?4,coalesce(?5,size),CASE WHEN ?5 IS NULL THEN modified_ns ELSE ?6 END FROM recordings WHERE id=?3 ON CONFLICT(source_id,external_id,file_id,relation) DO UPDATE SET file_size=excluded.file_size,file_modified_ns=excluded.file_modified_ns WHERE provider_links.file_size IS NOT excluded.file_size OR provider_links.file_modified_ns IS NOT excluded.file_modified_ns",
                         params![source, entry.id, id, reference.row.relation, reference.file.as_ref().map(|f|f.size),reference.file.as_ref().and_then(|f|f.modified_ns.as_ref())],
                     )
                     .map_err(|e| e.to_string())?;
                     // Existing matches keep their known locations even while temporarily absent.
                     if let Some(file) = &reference.file {
-                        tx.execute("UPDATE recordings SET status=CASE WHEN size<>?2 OR modified_ns IS NOT ?3 OR status='error' THEN 'pending' ELSE status END,error=CASE WHEN size<>?2 OR modified_ns IS NOT ?3 OR status='error' THEN NULL ELSE error END,size=?2,modified_ns=?3,modified_ms=?4 WHERE id=?1",params![id,file.size,file.modified_ns,file.modified_ms]).map_err(|e|e.to_string())?;
+                        tx.execute("UPDATE recordings SET status=CASE WHEN size<>?2 OR modified_ns IS NOT ?3 OR status='error' THEN 'pending' ELSE status END,error=CASE WHEN size<>?2 OR modified_ns IS NOT ?3 OR status='error' THEN NULL ELSE error END,size=?2,modified_ns=?3,modified_ms=?4 WHERE id=?1 AND (size<>?2 OR modified_ns IS NOT ?3 OR modified_ms IS NOT ?4 OR status='error')",params![id,file.size,file.modified_ns,file.modified_ms]).map_err(|e|e.to_string())?;
                         tx.execute("INSERT INTO locations(file_id,path,name) VALUES(?1,?2,?3) ON CONFLICT(path) DO NOTHING",params![id,file.path,file.name]).map_err(|e|e.to_string())?;
-                        tx.execute("INSERT INTO provider_access(source_id,location_id) SELECT ?1,id FROM locations WHERE file_id=?2 AND path=?3 ON CONFLICT(source_id,location_id) DO UPDATE SET availability='available'",params![source,id,file.path]).map_err(|e|e.to_string())?;
+                        tx.execute("INSERT INTO provider_access(source_id,location_id) SELECT ?1,id FROM locations WHERE file_id=?2 AND path=?3 ON CONFLICT(source_id,location_id) DO UPDATE SET availability='available' WHERE provider_access.availability<>'available'",params![source,id,file.path]).map_err(|e|e.to_string())?;
                     } else if let Some(key) = reference.row.path.as_deref().and_then(paths::key) {
                         let mut statement = tx
                             .prepare("SELECT id,path FROM locations WHERE file_id=?1")
@@ -531,7 +639,7 @@ impl Db {
                         drop(statement);
                         for (location, path) in locations {
                             if paths::key(&path) == Some(key.clone()) {
-                                tx.execute("INSERT INTO provider_access(source_id,location_id,availability) VALUES(?1,?2,'missing') ON CONFLICT(source_id,location_id) DO UPDATE SET availability='missing'",params![source,location]).map_err(|e|e.to_string())?;
+                                tx.execute("INSERT INTO provider_access(source_id,location_id,availability) VALUES(?1,?2,'missing') ON CONFLICT(source_id,location_id) DO UPDATE SET availability='missing' WHERE provider_access.availability<>'missing'",params![source,location]).map_err(|e|e.to_string())?;
                             }
                         }
                     }
@@ -549,7 +657,7 @@ impl Db {
                             );
                         }
                         tx.execute(
-                            "INSERT INTO provider_previews VALUES(?1,?2,?3,?4,?5)",
+                            "INSERT INTO provider_previews VALUES(?1,?2,?3,?4,?5) ON CONFLICT(source_id,external_id,relation) DO UPDATE SET path=excluded.path,revision=excluded.revision WHERE provider_previews.path<>excluded.path OR provider_previews.revision<>excluded.revision",
                             params![source, entry.id, reference.row.relation, path, revision],
                         )
                         .map_err(|e| e.to_string())?;
@@ -559,6 +667,7 @@ impl Db {
             }
             commit.done.fetch_add(1, Ordering::Release);
         }
+        super::selection::reconcile(&tx, &affected, source)?;
         tx.execute("INSERT INTO provider_imports VALUES(?1,?2,?3,?4) ON CONFLICT(source_id) DO UPDATE SET catalog_path=excluded.catalog_path,revision=excluded.revision,imported_ms=excluded.imported_ms",params![source,commit.path,commit.revision,now]).map_err(|e|e.to_string())?;
         if commit.cancel.load(Ordering::Acquire) {
             return Err("Import cancelled; no changes were saved.".into());

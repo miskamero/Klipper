@@ -11,6 +11,27 @@ import {
 import { errorMessage } from "../services/media";
 import styles from "./MedalImport.module.scss";
 
+const countLabels: Record<string, string> = {
+	newFiles: "New references",
+	conflicts: "Contradictory metadata references",
+	warnings: "Game lookup warnings",
+	recovered: "Newly enriched recordings",
+	identityConflicts: "Identity conflicts",
+	metadataDifferences: "References with source differences",
+	timestampWarnings: "Records with unavailable timestamps",
+	invalidIdentities: "Skipped invalid identities",
+};
+function claim(value: unknown): string {
+	if (Array.isArray(value)) return value.map(claim).join(", ");
+	return value === null
+		? "Unknown"
+		: typeof value === "boolean"
+			? value
+				? "Yes"
+				: "No"
+			: String(value);
+}
+
 export default function MedalImport({
 	onClose,
 	onImported,
@@ -95,8 +116,8 @@ export default function MedalImport({
 				<button onClick={() => void close()}>{busy ? "Cancel operation" : "Close"}</button>
 			</header>
 			<p>
-				Choose Medal’s local clips.json catalog. Preview the associations before saving.
-				Medal does not need to be running.
+				Choose Medal’s local clips.json catalog or SQLite .db database. Preview the
+				associations before saving. Medal does not need to be running.
 			</p>
 			{error && <p role="alert">{error}</p>}
 			{!busy && progress?.phase === "cancelled" && (
@@ -104,37 +125,51 @@ export default function MedalImport({
 			)}
 			{busy && (
 				<p role="status">
-					{progress?.phase === "importing" ? "Importing" : "Preparing preview"}…{" "}
-					{progress?.done ?? 0} / {progress?.total || "—"}
+					{progress?.phase === "previews"
+						? "Metadata saved · Caching previews"
+						: progress?.phase === "importing"
+							? "Importing"
+							: "Preparing preview"}
+					… {progress?.done ?? 0} / {progress?.total || "—"}
 				</p>
 			)}
 			{complete ? (
 				<p role="status">
 					Import complete. {progress?.linked ?? 0} recording associations saved.
 					Unresolved catalog records are retained without attaching guessed metadata.
+					{progress?.warning && <span> {progress.warning}</span>}
 				</p>
 			) : (
 				preview && (
 					<>
 						<p>
+							{preview.sourceFormat === "sqlite"
+								? "Medal SQLite database"
+								: "Medal JSON catalog"}
+							{preview.sourcePath && (
+								<>
+									{" "}
+									· <span>{preview.sourcePath}</span>
+								</>
+							)}
+						</p>
+						<p>
 							{preview.catalogEntries.toLocaleString()} catalog entries ·{" "}
 							{preview.total.toLocaleString()} video references
 						</p>
 						<dl className={styles.counts}>
-							{Object.entries(preview.counts).map(([label, count]) => (
-								<div key={label}>
-									<dt>
-										{label === "newFiles"
-											? "New references"
-											: label === "conflicts"
-												? "Conflicting references"
-												: label === "warnings"
-													? "Game lookup warnings"
-													: label}
-									</dt>
-									<dd>{count.toLocaleString()}</dd>
-								</div>
-							))}
+							{Object.entries(preview.counts)
+								.filter(
+									([label, count]) =>
+										count > 0 ||
+										!["timestampWarnings", "invalidIdentities"].includes(label),
+								)
+								.map(([label, count]) => (
+									<div key={label}>
+										<dt>{countLabels[label] ?? label}</dt>
+										<dd>{count.toLocaleString()}</dd>
+									</div>
+								))}
 						</dl>
 						<p>
 							Only exact paths or verified file identities are matched. Ambiguous
@@ -144,14 +179,35 @@ export default function MedalImport({
 						{preview.counts.conflicts > 0 && (
 							<p>
 								Some references contain contradictory metadata or changed file
-								identities. Conflicting titles from separate entries for the same
-								file use the filename fallback. Imported values remain inspectable.
+								identities. Existing selected values are retained; new unresolved
+								titles use the filename fallback. Imported values remain
+								inspectable.
 							</p>
 						)}
 						{preview.counts.warnings > 0 && (
 							<p>
 								Some game IDs map to multiple names and have no direct game name.
 								Their game names remain unknown; titles are unaffected.
+							</p>
+						)}
+						{!!preview.counts.timestampWarnings && (
+							<p>
+								Some optional provider timestamps are unavailable. Valid metadata
+								can still be imported. Previously imported valid timestamps are
+								retained and labeled in the inspector.
+							</p>
+						)}
+						{!!preview.counts.invalidIdentities && (
+							<p>
+								Entries without a usable local provider identity were skipped. No
+								identity or recording association was invented.
+							</p>
+						)}
+						{!!preview.counts.metadataDifferences && (
+							<p>
+								Sources disagree on some fields. Existing selected values are
+								preserved; both claims remain inspectable. These differences do not
+								imply incorrect file associations.
 							</p>
 						)}
 						{preview.counts.newFiles > 0 && (
@@ -183,12 +239,46 @@ export default function MedalImport({
 										{row.game ? " · " + row.game : ""}
 										{row.conflict ? " · Metadata conflict" : ""}
 										{row.warning ? " · Game lookup unresolved" : ""}
+										{row.identityConflict ? " · File identity conflict" : ""}
 									</span>
 									<details>
 										<summary>File and provider identity</summary>
 										<p>{row.path || "No local video path"}</p>
 										<p>Medal ID: {row.clipId}</p>
 									</details>
+									{!!row.timestampWarnings?.length && (
+										<details>
+											<summary>Unavailable timestamps</summary>
+											<ul>
+												{row.timestampWarnings.map((warning) => (
+													<li key={warning}>{warning}</li>
+												))}
+											</ul>
+										</details>
+									)}
+									{!!row.differences?.length && (
+										<details>
+											<summary>
+												Source metadata differences (
+												{row.differences.length})
+											</summary>
+											<dl>
+												{row.differences.map((difference, index) => (
+													<div key={index}>
+														<dt>{difference.field}</dt>
+														<dd>
+															Existing {difference.existingFormat}:{" "}
+															{claim(difference.existing)}
+															<br />
+															Incoming{" "}
+															{preview.sourceFormat ?? "json"}:{" "}
+															{claim(difference.incoming)}
+														</dd>
+													</div>
+												))}
+											</dl>
+										</details>
+									)}
 								</div>
 							))}
 						</div>

@@ -10,7 +10,7 @@ pub struct Query {
     pub folder_id: Option<String>,
     pub provider: Option<String>,
     #[serde(default)]
-    pub direct_only: bool,
+    pub unknown_game: bool,
     #[serde(default)]
     pub sort: String,
     #[serde(default)]
@@ -55,6 +55,8 @@ pub struct Page {
     pub total: i64,
     pub limit: u32,
     pub games: Vec<String>,
+    #[serde(rename = "unknownGameAvailable")]
+    pub unknown_game_available: bool,
 }
 
 pub fn query(db: &super::db::Db, query: Query) -> Result<Page, String> {
@@ -67,17 +69,11 @@ pub fn query(db: &super::db::Db, query: Query) -> Result<Page, String> {
         }
         root_id = Some(root);
         Some(path)
-    } else if query.direct_only {
-        let root = db.root(root_id.ok_or("Direct-folder browsing requires an indexed root")?)?;
-        let mut path = root.path.replace('\\', "/");
-        if !path.ends_with('/') {
-            path.push('/');
-        }
-        Some(path)
     } else {
         None
     };
-    if query.search.chars().count() > 200
+    if (query.unknown_game && query.game.is_some())
+        || query.search.chars().count() > 200
         || query.offset > 10_000_000
         || query.game.as_ref().is_some_and(|s| s.chars().count() > 512)
         || query.provider.as_ref().is_some_and(|s| {
@@ -108,8 +104,8 @@ pub fn query(db: &super::db::Db, query: Query) -> Result<Page, String> {
     );
     let cte = "WITH candidates AS (
         SELECT f.id,l.name,l.path,f.size,f.modified_ms,f.modified_ns,f.status,l.availability,f.error,
-        coalesce(o.title,p.title) AS title,coalesce(o.game,p.game) AS game,p.created_ms AS medal_created_ms,coalesce(p.conflict,0) AS metadata_conflict,
-        (SELECT min(pp.revision) FROM provider_previews pp JOIN provider_links pl ON pl.source_id=pp.source_id AND pl.external_id=pp.external_id AND pl.relation=pp.relation WHERE pl.file_id=f.id AND pl.file_size=f.size AND pl.file_modified_ns IS f.modified_ns HAVING count(DISTINCT pp.path)=1 AND count(DISTINCT pp.revision)=1) AS preview_revision,
+        coalesce(o.title,p.title) AS title,nullif(trim(coalesce(o.game,p.game)),'') AS game,p.created_ms AS medal_created_ms,coalesce(p.conflict,0) AS metadata_conflict,
+        coalesce((SELECT json_extract(value_json,'$[1]') FROM provider_choices c WHERE c.file_id=f.id AND c.field='preview'),(SELECT min(pp.revision) FROM provider_previews pp JOIN provider_links pl ON pl.source_id=pp.source_id AND pl.external_id=pp.external_id AND pl.relation=pp.relation WHERE pl.file_id=f.id AND pl.file_size=f.size AND pl.file_modified_ns IS f.modified_ns HAVING count(DISTINCT pp.path)=1 AND count(DISTINCT pp.revision)=1)) AS preview_revision,
         CASE WHEN f.status='ready' THEN m.duration END AS duration,
         CASE WHEN f.status='ready' THEN m.video_codec END AS video_codec,
         CASE WHEN f.status='ready' THEN m.width END AS width,
@@ -124,11 +120,11 @@ pub fn query(db: &super::db::Db, query: Query) -> Result<Page, String> {
         WHERE (?1 IS NULL OR l.root_id=?1)
         AND (?7 IS NULL OR (l.availability='available' AND EXISTS(SELECT 1 FROM provider_links pl JOIN sources ps ON ps.id=pl.source_id WHERE pl.file_id=f.id AND ps.kind=?7)))
         AND (?8 IS NULL OR substr(replace(l.path,'\\','/'),1,length(?8))=?8 COLLATE FOLDERCASE)
-        AND (?9=0 OR instr(substr(replace(l.path,'\\','/'),length(?8)+1),'/')=0)
         AND (l.name LIKE ?2 ESCAPE '\\' OR l.path LIKE ?2 ESCAPE '\\' OR coalesce(o.title,p.title) LIKE ?2 ESCAPE '\\' OR coalesce(o.game,p.game) LIKE ?2 ESCAPE '\\' OR EXISTS(SELECT 1 FROM provider_links sl JOIN provider_entries se ON se.source_id=sl.source_id AND se.external_id=sl.external_id WHERE sl.file_id=f.id AND sl.relation='primary' AND (se.title LIKE ?2 ESCAPE '\\' OR se.game LIKE ?2 ESCAPE '\\')))
     ), filtered AS (SELECT * FROM candidates WHERE preferred=1
         AND (?3 IN ('','all') OR availability=?3 OR status=?3)
-        AND (?4 IN ('','all') OR video_codec=?4) AND (?6 IS NULL OR game=?6)) ";
+        AND (?4 IN ('','all') OR video_codec=?4)
+        AND (?6 IS NULL OR game=?6 COLLATE NOCASE) AND (?9=0 OR game IS NULL)) ";
     let cte = cte.replace(
         "FOLDERCASE",
         if cfg!(windows) { "NOCASE" } else { "BINARY" },
@@ -145,7 +141,7 @@ pub fn query(db: &super::db::Db, query: Query) -> Result<Page, String> {
                 query.game,
                 query.provider,
                 prefix,
-                query.direct_only
+                query.unknown_game
             ],
             |r| r.get(0),
         )
@@ -170,7 +166,7 @@ pub fn query(db: &super::db::Db, query: Query) -> Result<Page, String> {
                 query.game,
                 query.provider,
                 prefix,
-                query.direct_only
+                query.unknown_game
             ],
             |r| {
                 Ok(RecordingRow {
@@ -200,18 +196,35 @@ pub fn query(db: &super::db::Db, query: Query) -> Result<Page, String> {
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
+    // Facets describe the selected collection, independent of the current page or filters.
+    // NOCASE merges ASCII case variants only; aliases and unverified IDs are never guessed.
+    let mut statement = connection
+        .prepare(&format!("{cte} SELECT min(game COLLATE BINARY) FROM candidates WHERE preferred=1 GROUP BY game COLLATE NOCASE ORDER BY 1 COLLATE NOCASE"))
+        .map_err(|e| e.to_string())?;
+    let facets = statement
+        .query_map(
+            params![
+                root_id,
+                "%",
+                "all",
+                "all",
+                0,
+                Option::<String>::None,
+                query.provider,
+                prefix,
+                false
+            ],
+            |r| r.get::<_, Option<String>>(0),
+        )
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+    let unknown_game_available = facets.iter().any(Option::is_none);
     Ok(Page {
         items,
         total,
         limit: 40,
-        games: {
-            let mut statement=connection.prepare("SELECT DISTINCT coalesce(o.game,p.game) AS game FROM provider_display p LEFT JOIN recording_overrides o ON o.file_id=p.file_id WHERE coalesce(o.game,p.game) IS NOT NULL ORDER BY 1 COLLATE NOCASE LIMIT 1000").map_err(|e|e.to_string())?;
-            let values = statement
-                .query_map([], |r| r.get(0))
-                .map_err(|e| e.to_string())?
-                .collect::<Result<Vec<_>, _>>()
-                .map_err(|e| e.to_string())?;
-            values
-        },
+        games: facets.into_iter().flatten().collect(),
+        unknown_game_available,
     })
 }

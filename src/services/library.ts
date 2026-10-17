@@ -66,7 +66,7 @@ export interface LibraryRecording {
 
 export interface LibraryQuery {
 	home?: boolean;
-	directOnly?: boolean;
+	unknownGame?: boolean;
 	search: string;
 	rootId: number | null;
 	folderId?: string | null;
@@ -84,6 +84,7 @@ export interface LibraryPage {
 	total: number;
 	limit: number;
 	games?: string[];
+	unknownGameAvailable?: boolean;
 }
 
 export function scanActive(phase: string): boolean {

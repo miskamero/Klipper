@@ -313,6 +313,18 @@ impl Library {
         executable: PathBuf,
         analysis: Arc<Analysis>,
     ) -> Result<Option<Vec<u8>>, String> {
+        self.thumbnail_with_fallback(id, token, executable, analysis, true)
+            .await
+    }
+
+    pub(crate) async fn thumbnail_with_fallback(
+        self: &Arc<Self>,
+        id: i64,
+        token: String,
+        executable: PathBuf,
+        analysis: Arc<Analysis>,
+        video_fallback: bool,
+    ) -> Result<Option<Vec<u8>>, String> {
         let Some(mut ticket) = self.thumbnails.begin(token.clone(), analysis.clone())? else {
             return Ok(None);
         };
@@ -382,6 +394,9 @@ impl Library {
                     }
                 }
             }
+        }
+        if !video_fallback {
+            return Ok(None);
         }
         let key = fingerprint(id, &before)?;
         let cache_key = key.clone();

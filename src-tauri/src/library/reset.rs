@@ -32,7 +32,7 @@ impl Db {
         let tx = self.connection.transaction().map_err(|e| e.to_string())?;
         // Explicit library-owned tables only. Do not delete the database or external paths.
         tx.execute_batch(
-            "DELETE FROM provider_previews; DELETE FROM provider_links;
+            "DELETE FROM provider_choices; DELETE FROM provider_previews; DELETE FROM provider_links;
             DELETE FROM provider_access; DELETE FROM provider_imports; DELETE FROM provider_entries;
             DELETE FROM source_recordings; DELETE FROM recording_overrides; DELETE FROM media;
             DELETE FROM root_entries; DELETE FROM locations; DELETE FROM roots;

@@ -52,11 +52,23 @@ export default function MedalDetails({ entries }: { entries: ImportedMetadata[] 
 					["Description", data.description],
 					["Game", data.game],
 					["Game ID", data.gameId],
-					["Medal created", date(data.createdMs)],
+					[
+						data.sourceFormat === "sqlite" ? "Local Medal created" : "Medal created",
+						date(data.createdMs),
+					],
 					["Content created", date(data.contentCreatedMs)],
 					["Last edit", date(data.lastEditMs)],
 					["Provider duration", data.duration == null ? null : time(data.duration)],
 					["Tags", data.tags.length ? data.tags.join(", ") : null],
+					["Game name source", data.gameField ?? null],
+					[
+						"Custom title flag",
+						data.contentHasTitle == null ? null : data.contentHasTitle ? "Yes" : "No",
+					],
+					[
+						"Remote trim start",
+						data.remoteTrimStart == null ? null : data.remoteTrimStart + " s",
+					],
 				];
 				return (
 					<details
@@ -68,6 +80,8 @@ export default function MedalDetails({ entries }: { entries: ImportedMetadata[] 
 							{entry.relation === "original"
 								? "Related Medal edit (this file is its original)"
 								: "Imported clip information"}
+							{" · "}
+							{data.sourceFormat === "sqlite" ? "SQLite" : "JSON"}
 						</summary>
 						{entry.relation === "original" && (
 							<p>
@@ -79,6 +93,16 @@ export default function MedalDetails({ entries }: { entries: ImportedMetadata[] 
 							Provider values are separate from FFprobe inspection. Medal creation
 							time is not a verified capture timestamp.
 						</p>
+						{!!Object.keys(entry.selectedValues ?? {}).length && (
+							<details>
+								<summary>Selected library values from this source</summary>
+								<p>
+									Selections survive unresolved disagreements. A retained value
+									can differ from this source’s latest claim.
+								</p>
+								<Properties value={entry.selectedValues} />
+							</details>
+						)}
 						<dl>
 							{fields
 								.filter(([, value]) => value !== null)
@@ -89,6 +113,32 @@ export default function MedalDetails({ entries }: { entries: ImportedMetadata[] 
 									</div>
 								))}
 						</dl>
+						{!!data.timestampWarnings?.length && (
+							<details>
+								<summary>Unavailable source timestamps</summary>
+								<ul>
+									{data.timestampWarnings.map((warning) => (
+										<li key={warning}>{warning}</li>
+									))}
+								</ul>
+							</details>
+						)}
+						{!!data.retainedTimestamps?.length && (
+							<p>
+								Using previously imported valid timestamps:{" "}
+								{data.retainedTimestamps
+									.map(
+										(field) =>
+											({
+												createdMs: "local creation",
+												contentCreatedMs: "remote content creation",
+												lastEditMs: "last edit",
+											})[field] ?? field,
+									)
+									.join(", ")}
+								. The latest source did not supply usable replacements.
+							</p>
+						)}
 						{data.titleDifference && (
 							<details>
 								<summary>Medal title fields</summary>
@@ -133,6 +183,12 @@ export default function MedalDetails({ entries }: { entries: ImportedMetadata[] 
 									<dt>Medal clip ID</dt>
 									<dd>{entry.externalId}</dd>
 								</div>
+								{data.remoteId && (
+									<div>
+										<dt>Remote clip ID</dt>
+										<dd>{data.remoteId}</dd>
+									</div>
+								)}
 								<div>
 									<dt>Imported</dt>
 									<dd>{date(entry.importedMs)}</dd>

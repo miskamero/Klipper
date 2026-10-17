@@ -1,5 +1,7 @@
 pub(crate) mod parse;
 pub(crate) mod paths;
+mod selection;
+mod sqlite;
 mod store;
 
 use crate::{commands::RecordingState, library::LibraryState};
@@ -24,6 +26,7 @@ struct Plan {
     revision: String,
     prepared: Vec<store::Prepared>,
     counts: store::Counts,
+    source_format: String,
 }
 #[derive(Clone, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -33,6 +36,8 @@ pub struct Progress {
     total: usize,
     linked: usize,
     error: String,
+    warning: String,
+    committed: bool,
 }
 struct Work {
     token: u64,
@@ -41,7 +46,7 @@ struct Work {
 }
 pub struct ImportState {
     work: Mutex<Work>,
-    cancel: AtomicBool,
+    cancel: Arc<AtomicBool>,
     stopped: AtomicBool,
     done: AtomicUsize,
     idle: watch::Sender<bool>,
@@ -54,7 +59,7 @@ impl Default for ImportState {
                 plan: None,
                 progress: Progress::default(),
             }),
-            cancel: AtomicBool::new(false),
+            cancel: Arc::new(AtomicBool::new(false)),
             stopped: AtomicBool::new(false),
             done: AtomicUsize::new(0),
             idle: watch::channel(true).0,
@@ -128,6 +133,8 @@ pub struct Preview {
     counts: store::Counts,
     rows: Vec<store::Row>,
     offset: usize,
+    source_format: String,
+    source_path: String,
 }
 fn preview(state: &ImportState, token: u64, offset: usize) -> Result<Preview, String> {
     let work = state.work.lock().unwrap();
@@ -145,6 +152,8 @@ fn preview(state: &ImportState, token: u64, offset: usize) -> Result<Preview, St
         total,
         counts: plan.counts.clone(),
         offset,
+        source_format: plan.source_format.clone(),
+        source_path: plan.path.clone(),
         rows: plan
             .prepared
             .iter()
@@ -159,9 +168,9 @@ fn catalog_file(path: &Path) -> Result<(PathBuf, String), String> {
     if path
         .extension()
         .and_then(|e| e.to_str())
-        .is_none_or(|e| !e.eq_ignore_ascii_case("json"))
+        .is_none_or(|e| !e.eq_ignore_ascii_case("json") && !e.eq_ignore_ascii_case("db"))
     {
-        return Err("Select a Medal clips.json catalog.".into());
+        return Err("Select Medal clips.json or a supported SQLite .db database.".into());
     }
     let meta = std::fs::metadata(&path).map_err(|_| "Catalog is unavailable")?;
     if meta.len() > MAX_CATALOG {
@@ -173,11 +182,24 @@ fn catalog_file(path: &Path) -> Result<(PathBuf, String), String> {
         .duration_since(std::time::UNIX_EPOCH)
         .map_err(|_| "Invalid catalog timestamp")?
         .as_nanos();
-    let revision = format!(
+    let mut revision = format!(
         "{}:{modified}:{:?}",
         meta.len(),
         crate::library::files::identity(&path)
     );
+    if path
+        .extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("db"))
+    {
+        let wal = PathBuf::from(format!("{}-wal", path.display()));
+        if std::fs::symlink_metadata(&wal).is_ok() {
+            paths::local_file(wal.to_str().ok_or("Invalid WAL path")?)?;
+        }
+        let stamp = std::fs::metadata(&wal)
+            .ok()
+            .map(|m| (m.len(), m.modified().ok()));
+        revision.push_str(&format!(":wal:{stamp:?}"));
+    }
     Ok((path, revision))
 }
 
@@ -199,8 +221,8 @@ pub async fn medal_select(
         dialog
             .dialog()
             .file()
-            .set_title("Import Medal clips.json — read-only preview")
-            .add_filter("Medal catalog", &["json"])
+            .set_title("Import Medal metadata — read-only preview")
+            .add_filter("Medal JSON or SQLite", &["json", "db"])
             .blocking_pick_file()
     })
     .await;
@@ -222,6 +244,16 @@ pub async fn medal_select(
                     .await
                     .map_err(|_| "Catalog validation failed")??;
             let path_text = path.to_str().ok_or("Invalid catalog path")?.to_owned();
+            let source_format = if path
+                .extension()
+                .is_some_and(|e| e.eq_ignore_ascii_case("db"))
+            {
+                "sqlite"
+            } else {
+                "json"
+            }
+            .to_owned();
+            let sqlite_source = source_format == "sqlite";
             let source = paths::key(&path_text).ok_or("Invalid catalog path")?;
             let source_key = source.clone();
             let file_revision = revision.clone();
@@ -234,13 +266,19 @@ pub async fn medal_select(
                 .database(move |db| {
                     Ok((
                         db.medal_index(&source_key)?,
-                        db.cached_medal_catalog(&source_key, &file_revision, source_bytes)?,
+                        if sqlite_source {
+                            None
+                        } else {
+                            db.cached_medal_catalog(&source_key, &file_revision, source_bytes)?
+                        },
                     ))
                 })
                 .await?;
             let state = worker.medal.clone();
-            let (prepared, mut counts, skipped) = tauri::async_runtime::spawn_blocking(move || {
-                let catalog = if let Some(cached) = cached {
+            let (prepared, counts) = tauri::async_runtime::spawn_blocking(move || {
+                let catalog = if sqlite_source {
+                    sqlite::load(&path, state.cancel.clone())?
+                } else if let Some(cached) = cached {
                     cached
                 } else {
                     let file =
@@ -255,13 +293,14 @@ pub async fn medal_select(
                     parse::parse(&bytes)?
                 };
                 state.work.lock().unwrap().progress.total = catalog.entries.len();
-                let (prepared, counts) =
+                let (prepared, mut counts) =
                     store::prepare(catalog.entries, index, &state.cancel, &state.done)?;
-                Ok::<_, String>((prepared, counts, catalog.skipped))
+                counts.skipped = catalog.skipped;
+                counts.invalid_identities = catalog.invalid_identities;
+                Ok::<_, String>((prepared, counts))
             })
             .await
             .map_err(|_| "Catalog preparation failed")??;
-            counts.skipped = skipped;
             if worker.medal.cancel.load(Ordering::Acquire) {
                 return Err("Import cancelled".into());
             }
@@ -273,6 +312,7 @@ pub async fn medal_select(
                 revision,
                 prepared,
                 counts,
+                source_format,
             }));
             Ok(0)
         }
@@ -338,48 +378,145 @@ pub async fn medal_commit(
     }
     library.medal.begin("importing")?;
     library.medal.work.lock().unwrap().progress.total = plan.prepared.len();
+    let analysis = recordings.analysis.clone();
     let owner = library.clone();
-    let task = tauri::async_runtime::spawn(async move {
-        let _operation = operation;
-        let state = owner.medal.clone();
-        let result = owner
-            .database(move |db| {
-                if catalog_file(Path::new(&plan.path))?.1 != plan.revision {
-                    return Err("Catalog changed after preview. Select it again.".into());
-                }
-                let source_revision = serde_json::to_string(&(
-                    parse::NORMALIZATION_VERSION,
-                    &plan.revision,
-                    plan.counts.skipped,
-                    plan.prepared
-                        .iter()
-                        .map(|p| &p.entry.id)
-                        .collect::<Vec<_>>(),
-                ))
-                .map_err(|e| e.to_string())?;
-                db.commit_medal(store::Commit {
-                    source: &plan.source,
-                    path: &plan.path,
-                    revision: &source_revision,
-                    prepared: &plan.prepared,
-                    additions: &additions,
-                    cancel: &state.cancel,
-                    done: &state.done,
+    let task =
+        tauri::async_runtime::spawn(async move {
+            let _operation = operation;
+            let state = owner.medal.clone();
+            let source_for_previews = plan.source.clone();
+            let result = owner
+                .database(move |db| {
+                    if catalog_file(Path::new(&plan.path))?.1 != plan.revision {
+                        return Err("Catalog changed after preview. Select it again.".into());
+                    }
+                    let source_revision = serde_json::to_string(&(
+                        parse::NORMALIZATION_VERSION,
+                        &plan.revision,
+                        plan.counts.skipped,
+                        plan.prepared
+                            .iter()
+                            .map(|p| &p.entry.id)
+                            .collect::<Vec<_>>(),
+                    ))
+                    .map_err(|e| e.to_string())?;
+                    db.commit_medal(store::Commit {
+                        source: &plan.source,
+                        path: &plan.path,
+                        revision: &source_revision,
+                        prepared: &plan.prepared,
+                        additions: &additions,
+                        cancel: &state.cancel,
+                        done: &state.done,
+                    })
                 })
-            })
-            .await;
-        owner.medal.finish(&result);
-        if result.is_ok() {
-            owner.medal.work.lock().unwrap().plan = None;
+                .await;
+            if result.is_ok() {
+                {
+                    let mut work = owner.medal.work.lock().unwrap();
+                    work.progress.committed = true;
+                    work.progress.phase = "previews".into();
+                }
+                let warning = match crate::config::ffmpeg(&app) {
+                Ok(ffmpeg) => {
+                    owner
+                        .materialize_medal_previews(source_for_previews, ffmpeg, analysis.clone())
+                        .await
+                }
+                Err(_) => Some(
+                    "Metadata saved. FFmpeg is unavailable, so provider previews were not cached."
+                        .into(),
+                ),
+            };
+                if let Some(warning) = warning {
+                    owner.medal.work.lock().unwrap().progress.warning = warning;
+                }
+            }
+            if result.is_ok() {
+                owner.medal.work.lock().unwrap().plan = None;
+            }
+            owner.medal.finish(&result);
+            if result.is_ok() {
+                match crate::config::ffprobe(&app) {
+                    Ok(executable) => {
+                        if owner
+                            .start_provider(executable, analysis.clone())
+                            .await
+                            .is_err()
+                        {
+                            owner.medal.work.lock().unwrap().progress.warning.push_str(
+                                " Metadata saved; background inspection could not start.",
+                            );
+                        }
+                    }
+                    Err(_) => owner.medal.work.lock().unwrap().progress.warning.push_str(
+                        " Metadata saved; FFprobe is unavailable for pending inspections.",
+                    ),
+                }
+            }
+            // Capture the reply before releasing the operation guard: reset may clear
+            // shared progress as soon as this owned task has finished.
+            result.map(|_| owner.medal.work.lock().unwrap().progress.clone())
+        });
+    task.await.map_err(|_| "Import stopped")?
+}
+
+impl crate::library::Library {
+    async fn materialize_medal_previews(
+        self: &Arc<Self>,
+        source: String,
+        executable: PathBuf,
+        analysis: Arc<crate::analysis::Analysis>,
+    ) -> Option<String> {
+        let ids=self.database(move|db|{
+            let mut s=db.connection.prepare("SELECT DISTINCT l.file_id FROM provider_links l JOIN sources s ON s.id=l.source_id JOIN provider_previews p ON p.source_id=l.source_id AND p.external_id=l.external_id AND p.relation=l.relation WHERE s.kind='medal' AND s.external_key=?1 ORDER BY l.file_id").map_err(|e|e.to_string())?;
+            let ids=s.query_map([source],|r|r.get::<_,i64>(0)).map_err(|e|e.to_string())?.collect::<Result<Vec<_>,_>>().map_err(|e|e.to_string())?;
+            Ok(ids)
+        }).await;
+        let Ok(ids) = ids else {
+            return Some("Metadata saved; preview caching could not start.".into());
+        };
+        let mut pending = ids.len().saturating_sub(2000);
+        self.medal.done.store(0, Ordering::Release);
+        self.medal.work.lock().unwrap().progress.total = ids.len().min(2000);
+        for (index, &id) in ids.iter().take(2000).enumerate() {
+            if self.medal.cancel.load(Ordering::Acquire) {
+                pending += ids.len().min(2000) - index;
+                break;
+            }
+            if self.cached_thumbnail(id).await.ok().flatten().is_some() {
+                self.medal.done.fetch_add(1, Ordering::Release);
+                continue;
+            }
+            let token = format!("medal-preview-{id}");
+            // Importing copies provider images; video decoding stays lazy in the gallery.
+            let work = self.thumbnail_with_fallback(
+                id,
+                token.clone(),
+                executable.clone(),
+                analysis.clone(),
+                false,
+            );
+            tokio::pin!(work);
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(8);
+            let outcome = loop {
+                tokio::select! {
+                    result=&mut work=>break result,
+                    _=tokio::time::sleep(std::time::Duration::from_millis(100))=>{
+                        if self.medal.cancel.load(Ordering::Acquire) || std::time::Instant::now()>=deadline {
+                            self.thumbnails.cancel(&token,&analysis);
+                            break work.await;
+                        }
+                    }
+                }
+            };
+            if !matches!(outcome, Ok(Some(_))) {
+                pending += 1;
+            }
+            self.medal.done.fetch_add(1, Ordering::Release);
         }
-        result
-    });
-    task.await.map_err(|_| "Import stopped")??;
-    library
-        .start_provider(crate::config::ffprobe(&app)?, recordings.analysis.clone())
-        .await?;
-    let progress = library.medal.work.lock().unwrap().progress.clone();
-    Ok(progress)
+        (pending>0).then(||format!("Metadata saved. {pending} previews were not cached (cancelled, busy, unavailable, or beyond the 2,000-preview retention limit); they can load on demand with FFmpeg fallback."))
+    }
 }
 #[tauri::command]
 pub async fn medal_status(library: State<'_, LibraryState>) -> Result<Progress, String> {

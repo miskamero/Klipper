@@ -2,11 +2,20 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
 // Bump when the whitelist or interpretation changes, so unchanged sources are normalized again.
-pub const NORMALIZATION_VERSION: &str = "medal-clips-v2";
+pub const NORMALIZATION_VERSION: &str = "medal-clips-v4";
+pub(super) const MAX_TIMESTAMP_MS: i64 = 32_503_680_000_000;
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Metadata {
+    pub source_format: String,
+    pub local_id: Option<String>,
+    pub remote_id: Option<String>,
+    pub content_has_title: Option<bool>,
+    pub remote_trim_start: Option<f64>,
+    pub game_field: Option<String>,
+    pub timestamp_warnings: Vec<String>,
+    pub retained_timestamps: Vec<String>,
     pub title: Option<String>,
     pub title_field: Option<String>,
     pub local_title: Option<String>,
@@ -38,6 +47,7 @@ pub struct Entry {
 pub struct Catalog {
     pub entries: Vec<Entry>,
     pub skipped: usize,
+    pub invalid_identities: usize,
 }
 struct Root(Map<String, Value>);
 impl<'de> Deserialize<'de> for Root {
@@ -67,21 +77,27 @@ impl<'de> Deserialize<'de> for Root {
     }
 }
 
-fn text(value: &Value, limit: usize) -> Option<String> {
+pub(super) fn text(value: &Value, limit: usize) -> Option<String> {
     value
         .as_str()
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .map(|s| s.chars().take(limit).collect())
 }
-fn epoch(value: &Value, scale: f64) -> Option<i64> {
-    value
-        .as_f64()
-        .map(|v| v * scale)
-        .filter(|v| v.is_finite() && *v >= 0.0 && *v < 32_503_680_000_000.0)
-        .map(|v| v.round() as i64)
+pub(super) fn epoch(value: &Value, millis_per_unit: i64) -> Option<i64> {
+    let millis = if let Some(integer) = value.as_i64() {
+        integer.checked_mul(millis_per_unit)?
+    } else {
+        let scaled = value.as_f64()? * millis_per_unit as f64;
+        if !scaled.is_finite() || scaled <= 0.0 || scaled >= MAX_TIMESTAMP_MS as f64 {
+            return None;
+        }
+        // The library uses milliseconds. Round fractional source units, never truncate.
+        scaled.round() as i64
+    };
+    (millis > 0 && millis < MAX_TIMESTAMP_MS).then_some(millis)
 }
-fn select(value: &Value, keys: &[&str]) -> Value {
+pub(super) fn select(value: &Value, keys: &[&str]) -> Value {
     let mut map = Map::new();
     for key in keys {
         let v = &value[key];
@@ -314,6 +330,18 @@ pub fn parse(bytes: &[u8]) -> Result<Catalog, String> {
             );
         }
         let data = Metadata {
+            source_format: "json".into(),
+            local_id: Some(id.clone()),
+            remote_id: text(&content["contentId"], 256),
+            content_has_title: content["hasTitle"].as_bool(),
+            remote_trim_start: content["trimStartTime"]
+                .as_f64()
+                .filter(|v| v.is_finite() && *v >= 0.0),
+            game_field: game
+                .as_ref()
+                .map(|_| "JSON category name or verified catalog lookup".into()),
+            timestamp_warnings: Vec::new(),
+            retained_timestamps: Vec::new(),
             title,
             title_field,
             title_difference: local_title.is_some()
@@ -326,9 +354,9 @@ pub fn parse(bytes: &[u8]) -> Result<Catalog, String> {
             game_id,
             game_conflict,
             game_lookup_ambiguous,
-            created_ms: epoch(&clip["TimeCreated"], 1000.0),
-            content_created_ms: epoch(&content["created"], 1.0),
-            last_edit_ms: epoch(&clip["lastEdit"], 1.0),
+            created_ms: epoch(&clip["TimeCreated"], 1000),
+            content_created_ms: epoch(&content["created"], 1),
+            last_edit_ms: epoch(&clip["lastEdit"], 1),
             duration: clip["duration"]
                 .as_f64()
                 .filter(|v| v.is_finite() && *v >= 0.0),
@@ -353,5 +381,9 @@ pub fn parse(bytes: &[u8]) -> Result<Catalog, String> {
     if entries.is_empty() && !object.is_empty() {
         return Err("No supported clip records were found.".into());
     }
-    Ok(Catalog { entries, skipped })
+    Ok(Catalog {
+        entries,
+        skipped,
+        invalid_identities: 0,
+    })
 }
