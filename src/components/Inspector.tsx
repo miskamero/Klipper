@@ -2,6 +2,8 @@ import type { MediaInfo, Recording } from "../services/media";
 import { bytes, time } from "../lib/format";
 import { audioLayout, containerLabel } from "../lib/mediaLabels";
 import styles from "./Inspector.module.scss";
+import MedalDetails from "./MedalDetails";
+import type { ImportedMetadata } from "../services/medal";
 
 export default function Inspector({
 	recording,
@@ -9,18 +11,24 @@ export default function Inspector({
 	loading,
 	error,
 	onRetry,
+	metadata,
+	importedTitle,
 }: {
 	recording: Recording | null;
 	info: MediaInfo | null;
 	loading: boolean;
 	error: string;
 	onRetry: () => void;
+	metadata?: ImportedMetadata[];
+	importedTitle?: string | null;
 }) {
 	const displayTitle =
+		importedTitle ||
 		recording?.name
 			.replace(/\.[^.]+$/, "")
 			.replace(/_+/g, " ")
-			.trim() || recording?.name;
+			.trim() ||
+		recording?.name;
 	return (
 		<aside className={styles.inspector} aria-label="Recording details">
 			<div className={styles.identity}>
@@ -36,6 +44,7 @@ export default function Inspector({
 					<h2>No recording open</h2>
 				)}
 			</div>
+			{metadata && metadata.length > 0 && <MedalDetails entries={metadata} />}
 			{recording && (
 				<details className={styles.file}>
 					<summary>Source file</summary>

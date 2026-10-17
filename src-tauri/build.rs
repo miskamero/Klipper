@@ -12,6 +12,7 @@ fn main() {
                 "mpv_overlay",
                 "library_status",
                 "library_query",
+                "library_reset",
                 "library_add_folder",
                 "library_rescan",
                 "library_cancel",
@@ -19,6 +20,11 @@ fn main() {
                 "library_open",
                 "library_thumbnail",
                 "library_thumbnail_cancel",
+                "medal_select",
+                "medal_preview",
+                "medal_commit",
+                "medal_cancel",
+                "medal_status",
             ]
         } else {
             &[
@@ -29,6 +35,7 @@ fn main() {
                 "playback_backend",
                 "library_status",
                 "library_query",
+                "library_reset",
                 "library_add_folder",
                 "library_rescan",
                 "library_cancel",
@@ -36,6 +43,11 @@ fn main() {
                 "library_open",
                 "library_thumbnail",
                 "library_thumbnail_cancel",
+                "medal_select",
+                "medal_preview",
+                "medal_commit",
+                "medal_cancel",
+                "medal_status",
             ]
         };
     tauri_build::try_build(

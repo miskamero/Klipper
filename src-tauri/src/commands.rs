@@ -81,6 +81,35 @@ impl Default for RecordingState {
 }
 
 impl RecordingState {
+    pub(crate) async fn forget_library(&self, window: &tauri::WebviewWindow) -> Result<(), String> {
+        let active = {
+            let selected = self
+                .selected
+                .lock()
+                .map_err(|_| "Recording state unavailable")?;
+            selected
+                .library
+                .as_ref()
+                .filter(|r| selected.active.as_ref().is_some_and(|a| a.id == r.id))
+                .map(|r| r.id)
+        };
+        #[cfg(windows)]
+        if let Some(id) = active {
+            crate::native_player::deactivate(window, id).await?;
+        }
+        #[cfg(not(windows))]
+        let _ = window;
+        let mut selected = self
+            .selected
+            .lock()
+            .map_err(|_| "Recording state unavailable")?;
+        if active.is_some_and(|id| selected.active.as_ref().is_some_and(|r| r.id == id)) {
+            selected.active = None;
+            self.analysis.supersede();
+        }
+        selected.library = None;
+        Ok(())
+    }
     pub(crate) fn begin_picker(&self) -> Result<(), String> {
         if self.picking.swap(true, Ordering::SeqCst) {
             Err("A file picker is already open.".into())

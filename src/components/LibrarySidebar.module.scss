@@ -1,0 +1,104 @@
+@use "../styles/tokens" as t;
+.sidebar {
+	flex: 0 0 220px;
+	min-width: 0;
+	overflow-y: auto;
+	border-right: 1px solid t.$border;
+	background: t.$panel;
+	padding: 12px 8px;
+	font-size: 13px;
+	svg {
+		width: 16px;
+		height: 16px;
+		flex-shrink: 0;
+	}
+	button {
+		border: 0;
+		background: transparent;
+		min-height: 34px;
+		font-size: 13px;
+	}
+	button:hover:not(:disabled) {
+		background: t.$hover;
+	}
+	button[aria-current] {
+		background: t.$selected;
+		color: t.$text-primary;
+		box-shadow: inset 2px 0 t.$accent;
+	}
+	ul {
+		margin: 0;
+		padding: 0;
+		list-style: none;
+	}
+	section {
+		margin-top: 16px;
+	}
+	p {
+		margin: 8px;
+		color: t.$text-secondary;
+	}
+}
+.collection {
+	display: flex;
+	gap: 8px;
+	align-items: center;
+	text-align: left;
+	width: 100%;
+	min-width: 0;
+	color: t.$text-secondary;
+	span {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		flex: 1;
+	}
+	small {
+		font-size: 12px;
+		font-variant-numeric: tabular-nums;
+	}
+}
+.toggle {
+	display: flex;
+	gap: 12px;
+	align-items: center;
+	margin-bottom: 16px;
+	width: 100%;
+}
+.section {
+	color: t.$text-secondary;
+	width: 100%;
+	text-align: left;
+	font-weight: 600;
+}
+.folder {
+	display: flex;
+	align-items: center;
+}
+.expander {
+	flex: 0 0 20px;
+	padding: 0;
+}
+.collapsed {
+	flex-basis: 44px;
+	padding: 12px 4px;
+	.toggle {
+		justify-content: center;
+	}
+}
+@media (max-width: 1000px) {
+	.sidebar {
+		flex-basis: 180px;
+	}
+	.collapsed {
+		flex-basis: 44px;
+	}
+}
+@media (max-width: 650px) {
+	.sidebar {
+		flex-basis: 148px;
+	}
+	.collapsed {
+		flex-basis: 44px;
+	}
+}

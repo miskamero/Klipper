@@ -18,7 +18,7 @@ pub struct Db {
 
 impl Db {
     // Shared read-only authorization for playback and thumbnails. No caller supplies a path.
-    pub fn resolve_file(&mut self, id: i64) -> Result<(File, Root)> {
+    pub fn resolve_file(&mut self, id: i64) -> Result<(File, Option<Root>)> {
         let mut last_error = "Recording has no remaining indexed folder.".to_string();
         for (path, root) in self.candidates(id)? {
             let validated = super::files::within(
@@ -40,13 +40,16 @@ impl Db {
                             "This path now refers to a different file. Rescan its folder.".into(),
                         );
                     }
-                    return Ok((file, root));
+                    return Ok((file, Some(root)));
                 }
                 Err(message) => {
                     self.unavailable(&path, matches!(Path::new(&path).try_exists(), Ok(false)))?;
                     last_error = message;
                 }
             }
+        }
+        if let Some(file) = self.provider_file(id)? {
+            return Ok((file, None));
         }
         Err(format!("Recording could not be opened: {last_error}"))
     }
@@ -63,12 +66,24 @@ impl Db {
         let version: i64 = connection
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .map_err(error)?;
-        if version > 1 {
+        if version > 3 {
             return Err("Library database was created by a newer Klipper version".into());
         }
         if version == 0 {
             let tx = connection.transaction().map_err(error)?;
             tx.execute_batch(include_str!("migrations/001.sql"))
+                .map_err(error)?;
+            tx.commit().map_err(error)?;
+        }
+        if version < 2 {
+            let tx = connection.transaction().map_err(error)?;
+            tx.execute_batch(include_str!("migrations/002.sql"))
+                .map_err(error)?;
+            tx.commit().map_err(error)?;
+        }
+        if version < 3 {
+            let tx = connection.transaction().map_err(error)?;
+            tx.execute_batch(include_str!("migrations/003.sql"))
                 .map_err(error)?;
             tx.commit().map_err(error)?;
         }
@@ -305,12 +320,14 @@ impl Db {
     }
 
     pub fn unavailable(&mut self, path: &str, missing: bool) -> Result<()> {
+        self.connection.execute("UPDATE provider_access SET availability=?2 WHERE location_id=(SELECT id FROM locations WHERE path=?1)",
+            params![path,if missing { "missing" } else { "inaccessible" }]).map_err(error)?;
         self.connection.execute("UPDATE root_entries SET availability=?2 WHERE location_id=(SELECT id FROM locations WHERE path=?1)",
             params![path,if missing { "missing" } else { "inaccessible" }]).map_err(error)?;
         Ok(())
     }
 
     pub fn query(&self, query: Query) -> Result<Page> {
-        super::query::query(&self.connection, query)
+        super::query::query(self, query)
     }
 }

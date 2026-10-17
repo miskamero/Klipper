@@ -29,6 +29,7 @@ export class ThumbnailQueue {
 	private lookups = 0;
 	private images = new Map<string, Preview>();
 	private imageBytes = 0;
+	private subscribers = new Set<Job>();
 
 	constructor(
 		private maxEntries = 120,
@@ -46,6 +47,7 @@ export class ThumbnailQueue {
 			running: false,
 		};
 		const cached = this.images.get(key);
+		this.subscribers.add(job);
 		if (cached) {
 			this.images.delete(key);
 			this.images.set(key, cached);
@@ -59,6 +61,7 @@ export class ThumbnailQueue {
 			this.pump();
 		}
 		return () => {
+			this.subscribers.delete(job);
 			job.cancelled = true;
 			this.visible.delete(job);
 			this.waiting = this.waiting.filter((item) => item !== job);
@@ -73,6 +76,24 @@ export class ThumbnailQueue {
 			}
 			this.trim();
 		};
+	}
+
+	clear() {
+		if (this.extracting) {
+			void invoke("library_thumbnail_cancel", { requestId: this.extracting.token }).catch(
+				() => {},
+			);
+		}
+		for (const job of this.subscribers) {
+			job.cancelled = true;
+			job.preview = undefined;
+		}
+		this.subscribers.clear();
+		this.visible.clear();
+		this.waiting = [];
+		for (const preview of this.images.values()) URL.revokeObjectURL(preview.url);
+		this.images.clear();
+		this.imageBytes = 0;
 	}
 
 	private trim() {

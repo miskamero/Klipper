@@ -27,6 +27,10 @@ export default function LibraryTools({
 	onAdd,
 	onRescan,
 	onRemove,
+	onImport,
+	games,
+	onReset,
+	home,
 }: {
 	query: LibraryQuery;
 	search: string;
@@ -41,16 +45,17 @@ export default function LibraryTools({
 	onAdd: () => void;
 	onRescan: (id: number) => void;
 	onRemove: (id: number) => void;
+	onImport: () => void;
+	games: string[];
+	onReset: () => void;
+	home: boolean;
 }) {
 	const [panel, setPanel] = useState<"filters" | "folders" | null>(null);
 	const filtersButton = useRef<HTMLButtonElement>(null);
 	const foldersButton = useRef<HTMLButtonElement>(null);
 	const filterCount =
-		Number(query.rootId !== null) +
-		Number(query.codec !== "all") +
-		Number(query.filter !== "all");
+		Number(query.codec !== "all") + Number(query.filter !== "all") + Number(!!query.game);
 	const roots = status?.roots ?? [];
-	const selectedRoot = roots.find((root) => root.id === query.rootId);
 
 	function toggle(next: "filters" | "folders") {
 		setPanel((previous) => (previous === next ? null : next));
@@ -60,12 +65,25 @@ export default function LibraryTools({
 		<div className={styles.tools}>
 			<div className={styles.heading}>
 				<div className={styles.title}>
-					<h1>Library</h1>
+					<h1>{home ? "Collections" : "Library"}</h1>
 					<span>
-						{count.toLocaleString()} recordings{search || filterCount ? " found" : ""}
+						{count.toLocaleString()} {count === 1 ? "recording" : "recordings"}
+						{!home && (search || filterCount) ? " found" : ""}
+						{!home && query.directOnly ? " in this folder" : ""}
 					</span>
 				</div>
 				<div className={styles.headingActions}>
+					<button
+						disabled={busy || scanning || !isTauri()}
+						onClick={onImport}
+						title={
+							scanning
+								? "Finish or cancel the current scan before importing"
+								: undefined
+						}
+					>
+						Import from Medal
+					</button>
 					<button
 						ref={foldersButton}
 						aria-expanded={panel === "folders"}
@@ -75,7 +93,7 @@ export default function LibraryTools({
 						<svg viewBox="0 0 18 18" aria-hidden="true">
 							<path d="M2 5V3h5l2 2h7v10H2z" />
 						</svg>
-						Folders
+						Manage library
 						{roots.length > 0 && <span className={styles.badge}>{roots.length}</span>}
 					</button>
 					<button
@@ -95,168 +113,174 @@ export default function LibraryTools({
 					</button>
 				</div>
 			</div>
-			<div className={styles.toolbar}>
-				<label className={styles.search}>
-					<svg viewBox="0 0 18 18" aria-hidden="true">
-						<circle cx="7.5" cy="7.5" r="4.5" />
-						<path d="m11 11 4 4" />
-					</svg>
-					<input
-						type="search"
-						aria-label="Search recordings"
-						placeholder="Search recordings"
-						value={search}
-						maxLength={200}
-						onChange={(event) => onSearch(event.target.value)}
-					/>
-				</label>
-				<div className={styles.sort}>
-					<label htmlFor="library-sort">Sort by</label>
-					<select
-						id="library-sort"
-						aria-label="Sort recordings"
-						value={query.sort}
-						onChange={(event) => onFilter({ sort: event.target.value })}
-					>
-						<option value="date">Modified date</option>
-						<option value="name">Name</option>
-						<option value="duration">Duration</option>
-						<option value="size">File size</option>
-					</select>
-					<button
-						aria-label={query.descending ? "Sort ascending" : "Sort descending"}
-						title={
-							query.descending
-								? "Descending; switch to ascending"
-								: "Ascending; switch to descending"
-						}
-						onClick={() => onFilter({ descending: !query.descending })}
-					>
-						<svg viewBox="0 0 18 18" aria-hidden="true">
-							<path
-								d={
-									query.descending
-										? "M6 3v12m-3-3 3 3 3-3M11 4h4m-4 4h3m-3 4h2"
-										: "M6 15V3M3 6l3-3 3 3m2 6h4m-4-4h3m-3-4h2"
-								}
+			{!home && (
+				<>
+					<div className={styles.toolbar}>
+						<label className={styles.search}>
+							<svg viewBox="0 0 18 18" aria-hidden="true">
+								<circle cx="7.5" cy="7.5" r="4.5" />
+								<path d="m11 11 4 4" />
+							</svg>
+							<input
+								type="search"
+								aria-label="Search recordings"
+								placeholder="Search recordings"
+								value={search}
+								maxLength={200}
+								onChange={(event) => onSearch(event.target.value)}
 							/>
-						</svg>
-					</button>
-				</div>
-				<button
-					ref={filtersButton}
-					aria-expanded={panel === "filters"}
-					aria-controls="library-filters"
-					onClick={() => toggle("filters")}
-				>
-					<svg viewBox="0 0 18 18" aria-hidden="true">
-						<path d="M3 5h12M5 9h8m-6 4h4" />
-					</svg>
-					Filters{filterCount > 0 && <span className={styles.badge}>{filterCount}</span>}
-				</button>
-				<div className={styles.viewSwitch} role="group" aria-label="Library view">
-					<button
-						aria-label="Grid view"
-						title="Grid view"
-						aria-pressed={view === "grid"}
-						onClick={() => onView("grid")}
-					>
-						<svg viewBox="0 0 18 18" aria-hidden="true">
-							<path d="M2.5 2.5h5v5h-5zM10.5 2.5h5v5h-5zM2.5 10.5h5v5h-5zM10.5 10.5h5v5h-5z" />
-						</svg>
-					</button>
-					<button
-						aria-label="List view"
-						title="List view"
-						aria-pressed={view === "list"}
-						onClick={() => onView("list")}
-					>
-						<svg viewBox="0 0 18 18" aria-hidden="true">
-							<path d="M2 3h4v4H2zM9 4h7M9 6h5M2 11h4v4H2zM9 12h7m-7 2h5" />
-						</svg>
-					</button>
-				</div>
-			</div>
-			{filterCount > 0 && panel !== "filters" && (
-				<div className={styles.filterSummary} aria-label="Active filters">
-					{query.rootId !== null && (
-						<span title={selectedRoot?.path}>
-							Folder:{" "}
-							{selectedRoot ? folderName(selectedRoot.path) : "Unavailable folder"}
-						</span>
+						</label>
+						<div className={styles.sort}>
+							<label htmlFor="library-sort">Sort by</label>
+							<select
+								id="library-sort"
+								aria-label="Sort recordings"
+								value={query.sort}
+								onChange={(event) => onFilter({ sort: event.target.value })}
+							>
+								<option value="date">Recording date</option>
+								<option value="name">Name</option>
+								<option value="duration">Duration</option>
+								<option value="size">File size</option>
+							</select>
+							<button
+								aria-label={query.descending ? "Sort ascending" : "Sort descending"}
+								title={
+									query.descending
+										? "Descending; switch to ascending"
+										: "Ascending; switch to descending"
+								}
+								onClick={() => onFilter({ descending: !query.descending })}
+							>
+								<svg viewBox="0 0 18 18" aria-hidden="true">
+									<path
+										d={
+											query.descending
+												? "M6 3v12m-3-3 3 3 3-3M11 4h4m-4 4h3m-3 4h2"
+												: "M6 15V3M3 6l3-3 3 3m2 6h4m-4-4h3m-3-4h2"
+										}
+									/>
+								</svg>
+							</button>
+						</div>
+						<button
+							ref={filtersButton}
+							aria-expanded={panel === "filters"}
+							aria-controls="library-filters"
+							onClick={() => toggle("filters")}
+						>
+							<svg viewBox="0 0 18 18" aria-hidden="true">
+								<path d="M3 5h12M5 9h8m-6 4h4" />
+							</svg>
+							Filters
+							{filterCount > 0 && <span className={styles.badge}>{filterCount}</span>}
+						</button>
+						<div className={styles.viewSwitch} role="group" aria-label="Library view">
+							<button
+								aria-label="Grid view"
+								title="Grid view"
+								aria-pressed={view === "grid"}
+								onClick={() => onView("grid")}
+							>
+								<svg viewBox="0 0 18 18" aria-hidden="true">
+									<path d="M2.5 2.5h5v5h-5zM10.5 2.5h5v5h-5zM2.5 10.5h5v5h-5zM10.5 10.5h5v5h-5z" />
+								</svg>
+							</button>
+							<button
+								aria-label="List view"
+								title="List view"
+								aria-pressed={view === "list"}
+								onClick={() => onView("list")}
+							>
+								<svg viewBox="0 0 18 18" aria-hidden="true">
+									<path d="M2 3h4v4H2zM9 4h7M9 6h5M2 11h4v4H2zM9 12h7m-7 2h5" />
+								</svg>
+							</button>
+						</div>
+					</div>
+					{filterCount > 0 && panel !== "filters" && (
+						<div className={styles.filterSummary} aria-label="Active filters">
+							{query.codec !== "all" && (
+								<span>
+									{query.codec === "h264" ? "H.264" : query.codec.toUpperCase()}
+								</span>
+							)}
+							{query.filter !== "all" && <span>Status: {query.filter}</span>}
+							{query.game && <span>Game: {query.game}</span>}
+							<button
+								onClick={() =>
+									onFilter({ filter: "all", codec: "all", game: null })
+								}
+							>
+								Clear filters
+							</button>
+						</div>
 					)}
-					{query.codec !== "all" && (
-						<span>{query.codec === "h264" ? "H.264" : query.codec.toUpperCase()}</span>
-					)}
-					{query.filter !== "all" && <span>Status: {query.filter}</span>}
-					<button onClick={() => onFilter({ rootId: null, filter: "all", codec: "all" })}>
-						Clear filters
-					</button>
-				</div>
+					<div
+						id="library-filters"
+						className={styles.filterPanel}
+						hidden={panel !== "filters"}
+						onKeyDown={(event) => {
+							if (event.key === "Escape") {
+								setPanel(null);
+								filtersButton.current?.focus();
+							}
+						}}
+					>
+						{games.length > 0 && (
+							<label>
+								Game
+								<select
+									aria-label="Game"
+									value={query.game ?? ""}
+									onChange={(event) =>
+										onFilter({ game: event.target.value || null })
+									}
+								>
+									<option value="">All games</option>
+									{games.map((game) => (
+										<option key={game} value={game}>
+											{game}
+										</option>
+									))}
+								</select>
+							</label>
+						)}
+						<label>
+							Status
+							<select
+								aria-label="Indexing status"
+								value={query.filter}
+								onChange={(event) => onFilter({ filter: event.target.value })}
+							>
+								<option value="all">All statuses</option>
+								<option value="available">Available</option>
+								<option value="missing">Missing</option>
+								<option value="pending">Pending analysis</option>
+								<option value="error">Analysis errors</option>
+							</select>
+						</label>
+						<label>
+							Codec
+							<select
+								aria-label="Video codec"
+								value={query.codec}
+								onChange={(event) => onFilter({ codec: event.target.value })}
+							>
+								<option value="all">All codecs</option>
+								<option value="hevc">HEVC</option>
+								<option value="h264">H.264</option>
+							</select>
+						</label>
+						<button
+							disabled={!filterCount}
+							onClick={() => onFilter({ filter: "all", codec: "all", game: null })}
+						>
+							Clear filters
+						</button>
+					</div>
+				</>
 			)}
-			<div
-				id="library-filters"
-				className={styles.filterPanel}
-				hidden={panel !== "filters"}
-				onKeyDown={(event) => {
-					if (event.key === "Escape") {
-						setPanel(null);
-						filtersButton.current?.focus();
-					}
-				}}
-			>
-				<label>
-					Folder
-					<select
-						aria-label="Folder source"
-						value={query.rootId ?? ""}
-						onChange={(event) =>
-							onFilter({
-								rootId: event.target.value ? Number(event.target.value) : null,
-							})
-						}
-					>
-						<option value="">All folders</option>
-						{roots.map((root) => (
-							<option key={root.id} value={root.id} title={root.path}>
-								{root.path}
-							</option>
-						))}
-					</select>
-				</label>
-				<label>
-					Status
-					<select
-						aria-label="Indexing status"
-						value={query.filter}
-						onChange={(event) => onFilter({ filter: event.target.value })}
-					>
-						<option value="all">All statuses</option>
-						<option value="available">Available</option>
-						<option value="missing">Missing</option>
-						<option value="pending">Pending analysis</option>
-						<option value="error">Analysis errors</option>
-					</select>
-				</label>
-				<label>
-					Codec
-					<select
-						aria-label="Video codec"
-						value={query.codec}
-						onChange={(event) => onFilter({ codec: event.target.value })}
-					>
-						<option value="all">All codecs</option>
-						<option value="hevc">HEVC</option>
-						<option value="h264">H.264</option>
-					</select>
-				</label>
-				<button
-					disabled={!filterCount}
-					onClick={() => onFilter({ rootId: null, filter: "all", codec: "all" })}
-				>
-					Clear filters
-				</button>
-			</div>
 			<div
 				id="library-folders"
 				className={styles.folderPanel}
@@ -308,6 +332,10 @@ export default function LibraryTools({
 						</div>
 					))}
 				</div>
+				<p>Reset forgets the library and its previews. Original files stay on disk.</p>
+				<button disabled={busy || !isTauri()} onClick={onReset}>
+					Reset Library…
+				</button>
 			</div>
 		</div>
 	);

@@ -5,6 +5,20 @@ pub const MAX_IMAGE: usize = 128 * 1024;
 pub const MAX_BYTES: i64 = 64 * 1024 * 1024;
 pub const MAX_ENTRIES: i64 = 2000;
 
+pub(super) fn reset_owned(directory: &Path) -> Result<(), String> {
+    let file = directory.join("previews-v1.sqlite3");
+    if !file.try_exists().map_err(|e| e.to_string())? {
+        return Ok(());
+    }
+    // Reject links/reparse points at every ancestor. Never inspect provider/source paths here.
+    super::super::medal::paths::local_file(file.to_str().ok_or("Invalid cache path")?)?;
+    let cache = Cache::open(directory)?;
+    cache
+        .db
+        .execute_batch("BEGIN IMMEDIATE; DELETE FROM images; DELETE FROM failures; COMMIT; VACUUM;")
+        .map_err(|e| e.to_string())
+}
+
 pub struct Cache {
     db: Connection,
     bytes: i64,
@@ -25,6 +39,7 @@ impl Cache {
             CREATE TABLE IF NOT EXISTS images (
                 key TEXT PRIMARY KEY, image BLOB NOT NULL, used_at INTEGER NOT NULL);
             CREATE INDEX IF NOT EXISTS images_lru ON images(used_at);
+            CREATE TABLE IF NOT EXISTS failures(key TEXT PRIMARY KEY, used_at INTEGER NOT NULL);
             PRAGMA user_version=1;",
         )
         .map_err(|e| e.to_string())?;
@@ -40,6 +55,25 @@ impl Cache {
             self.db.execute("UPDATE images SET used_at=(SELECT coalesce(max(used_at),0)+1 FROM images) WHERE key=?1",[key]).map_err(|e| e.to_string())?;
         }
         Ok(image)
+    }
+    pub fn failed(&self, key: &str) -> Result<bool, String> {
+        self.db
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM failures WHERE key=?1)",
+                [key],
+                |r| r.get(0),
+            )
+            .map_err(|e| e.to_string())
+    }
+    pub fn fail(&mut self, key: &str) -> Result<(), String> {
+        self.db
+            .execute(
+                "INSERT OR REPLACE INTO failures VALUES(?1,?2)",
+                params![key, crate::library::now_ms()],
+            )
+            .map_err(|e| e.to_string())?;
+        self.db.execute("DELETE FROM failures WHERE key IN (SELECT key FROM failures ORDER BY used_at DESC,key LIMIT -1 OFFSET 2000)",[]).map_err(|e|e.to_string())?;
+        Ok(())
     }
     pub fn put(&mut self, key: &str, image: &[u8]) -> Result<(), String> {
         if !super::valid_image(image) || image.len() as i64 > self.bytes {

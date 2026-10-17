@@ -5,6 +5,7 @@
 	"windows": ["main"],
 	"permissions": [
 		"library",
+		"medal-import",
 		"recording-select",
 		"recording-session",
 		"recording-analyze",

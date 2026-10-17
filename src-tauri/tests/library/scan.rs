@@ -11,7 +11,7 @@ async fn wait_idle(library: &Library) {
     .expect("scan failed to become idle");
 }
 
-fn helper(directory: &Path) -> PathBuf {
+pub(super) fn helper(directory: &Path) -> PathBuf {
     let output = directory.join(format!("probe{}", std::env::consts::EXE_SUFFIX));
     let result = std::process::Command::new("rustc")
         .arg("--edition=2021")

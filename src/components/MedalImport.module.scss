@@ -1,0 +1,92 @@
+@use "../styles/tokens" as t;
+
+.dialog {
+	width: min(820px, calc(100vw - 32px));
+	max-height: calc(100dvh - 48px);
+	padding: 20px;
+	box-sizing: border-box;
+	border: 1px solid t.$border;
+	border-radius: 6px;
+	background: t.$panel;
+	color: t.$text-primary;
+	font-size: 14px;
+	line-height: 1.5;
+	&::backdrop {
+		background: rgba(t.$video-stage, 0.8);
+	}
+	header,
+	footer,
+	.pagination {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+		flex-wrap: wrap;
+	}
+	h2 {
+		font-size: 16px;
+		margin: 0;
+	}
+	p {
+		color: t.$text-secondary;
+		overflow-wrap: anywhere;
+	}
+	button {
+		min-height: 36px;
+	}
+	[role="alert"] {
+		color: t.$text-primary;
+		border-left: 2px solid t.$warning;
+		padding-left: 12px;
+	}
+	footer {
+		margin-top: 16px;
+	}
+}
+.counts {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
+	gap: 8px 16px;
+	dt {
+		color: t.$text-secondary;
+		text-transform: capitalize;
+		font-size: 13px;
+	}
+	dd {
+		margin: 0;
+		font-variant-numeric: tabular-nums;
+	}
+}
+.rows {
+	max-height: 32dvh;
+	overflow-y: auto;
+	border-block: 1px solid t.$border;
+	margin-block: 16px;
+}
+.row {
+	padding: 12px 4px;
+	border-bottom: 1px solid t.$border;
+	overflow-wrap: anywhere;
+	> span {
+		display: block;
+		color: t.$text-secondary;
+		font-size: 13px;
+	}
+	summary {
+		cursor: pointer;
+		font-size: 13px;
+	}
+}
+.approval {
+	display: flex;
+	gap: 8px;
+	align-items: flex-start;
+	input {
+		margin-top: 5px;
+		min-height: 0;
+		flex-shrink: 0;
+	}
+}
+.pagination {
+	font-size: 13px;
+}

@@ -48,6 +48,7 @@ export default function App() {
 					active={view === "library"}
 					selecting={selecting}
 					onOpen={(id) => void session.open(id)}
+					onReset={session.forgetLibrary}
 				/>
 				{view === "libraryPlayback" && (
 					<div className={styles.libraryBack}>
@@ -133,6 +134,8 @@ export default function App() {
 							<Inspector
 								key={recording?.id ?? "empty"}
 								recording={recording}
+								metadata={session.current?.metadata}
+								importedTitle={session.current?.displayTitle}
 								info={info}
 								loading={analyzing}
 								error={analysisError}

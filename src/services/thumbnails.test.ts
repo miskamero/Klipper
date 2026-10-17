@@ -51,6 +51,33 @@ it("serializes extraction, cancels obsolete work and discards its late completio
 	expect(third).toHaveBeenCalledWith("blob:preview-1", "");
 });
 
+it("reset revokes retained and subscribed previews and ignores old in-flight responses", async () => {
+	let finish!: (bytes: ArrayBuffer) => void;
+	vi.mocked(invoke).mockImplementation(async (_command, args) => {
+		if ((args as { fileId: number }).fileId === 2)
+			return new Promise((resolve) => {
+				finish = resolve;
+			});
+		return image();
+	});
+	const queue = new ThumbnailQueue();
+	const remove = queue.request(1, "old", vi.fn());
+	await tick();
+	const late = vi.fn();
+	queue.request(2, "pending", late);
+	await tick();
+	queue.clear();
+	expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:preview-1");
+	remove();
+	finish(image());
+	await tick();
+	expect(late).not.toHaveBeenCalled();
+	const fresh = vi.fn();
+	queue.request(1, "old", fresh);
+	await tick();
+	expect(fresh).toHaveBeenCalledWith("blob:preview-2", "");
+});
+
 it("serves disk hits while an unrelated cold extraction is blocked", async () => {
 	let finish!: (bytes: ArrayBuffer) => void;
 	vi.mocked(invoke).mockImplementation(async (_command, args) => {

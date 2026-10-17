@@ -35,6 +35,7 @@ const info: media.MediaInfo = {
 };
 const recording = { id: 8, name: "Synthetic clip.mp4", path: "/synthetic/clip.mp4" };
 beforeEach(() => {
+	localStorage.setItem("klipper.libraryBrowsing", JSON.stringify({ home: false }));
 	vi.mocked(library.libraryStatus).mockResolvedValue({
 		roots: [],
 		progress: {

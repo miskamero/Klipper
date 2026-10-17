@@ -20,7 +20,7 @@ enum Work {
     Probe(oneshot::Sender<Reply>),
     Thumbnail {
         token: String,
-        seconds: f64,
+        seconds: Option<f64>,
         reply: oneshot::Sender<Result<Option<Vec<u8>>, String>>,
     },
 }
@@ -146,13 +146,22 @@ impl Analysis {
                     });
                 }
                 Work::Thumbnail { seconds, reply, .. } => {
-                    let result = crate::library::thumbnails::extract(
-                        &request.executable,
-                        &request.path,
-                        seconds,
-                        &mut cancelled,
-                    )
-                    .await;
+                    let result = if let Some(seconds) = seconds {
+                        crate::library::thumbnails::extract(
+                            &request.executable,
+                            &request.path,
+                            seconds,
+                            &mut cancelled,
+                        )
+                        .await
+                    } else {
+                        crate::library::thumbnails::extract_image(
+                            &request.executable,
+                            &request.path,
+                            &mut cancelled,
+                        )
+                        .await
+                    };
                     let _state = self.state.lock().unwrap();
                     let _ = reply.send(if *cancelled.borrow() {
                         Ok(None)
@@ -216,6 +225,23 @@ impl Analysis {
         executable: PathBuf,
         path: PathBuf,
         seconds: f64,
+        token: String,
+    ) -> Option<oneshot::Receiver<Result<Option<Vec<u8>>, String>>> {
+        self.try_preview(executable, path, Some(seconds), token)
+    }
+    pub fn try_image(
+        self: &Arc<Self>,
+        executable: PathBuf,
+        path: PathBuf,
+        token: String,
+    ) -> Option<oneshot::Receiver<Result<Option<Vec<u8>>, String>>> {
+        self.try_preview(executable, path, None, token)
+    }
+    fn try_preview(
+        self: &Arc<Self>,
+        executable: PathBuf,
+        path: PathBuf,
+        seconds: Option<f64>,
         token: String,
     ) -> Option<oneshot::Receiver<Result<Option<Vec<u8>>, String>>> {
         let mut state = self.state.lock().unwrap();

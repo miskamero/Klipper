@@ -18,8 +18,7 @@ export default function Thumbnail({
 		null,
 	);
 	const key = JSON.stringify([
-		// A future provider preview must add its source/revision here and in the native cache key.
-		"ffmpeg-320x180-q5-v1",
+		recording.previewRevision ?? "ffmpeg-320x180-q5-v1",
 		recording.id,
 		recording.size,
 		recording.revision,

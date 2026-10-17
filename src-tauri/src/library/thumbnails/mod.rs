@@ -14,6 +14,7 @@ pub struct Thumbnails {
     cache: Mutex<Option<cache::Cache>>,
     state: Mutex<Work>,
     idle: watch::Sender<bool>,
+    cache_disabled: std::sync::atomic::AtomicBool,
 }
 #[derive(Default)]
 struct Work {
@@ -43,12 +44,28 @@ impl Drop for Ticket {
 }
 
 impl Thumbnails {
+    pub(super) fn resume(&self) {
+        self.state.lock().unwrap().stopped = false;
+    }
+    pub(super) fn clear_cache_sync(&self) -> Result<(), String> {
+        use std::sync::atomic::Ordering;
+        self.cache_disabled.store(true, Ordering::Release);
+        let mut cache = self
+            .cache
+            .lock()
+            .map_err(|_| "Thumbnail cache unavailable")?;
+        *cache = None;
+        cache::reset_owned(&self.directory)?;
+        self.cache_disabled.store(false, Ordering::Release);
+        Ok(())
+    }
     pub fn new(directory: &Path) -> Arc<Self> {
         Arc::new(Self {
             directory: directory.into(),
             cache: Mutex::new(None),
             state: Mutex::default(),
             idle: watch::channel(true).0,
+            cache_disabled: std::sync::atomic::AtomicBool::new(false),
         })
     }
     pub fn is_idle(&self) -> bool {
@@ -108,6 +125,12 @@ impl Thumbnails {
     ) -> Result<T, String> {
         let owner = self.clone();
         tauri::async_runtime::spawn_blocking(move || {
+            if owner
+                .cache_disabled
+                .load(std::sync::atomic::Ordering::Acquire)
+            {
+                return Err("Thumbnail cleanup is pending. Retry Reset Library.".into());
+            }
             let mut cache = owner
                 .cache
                 .lock()
@@ -166,7 +189,90 @@ pub(crate) async fn extract(
     }
 }
 
+pub(crate) async fn extract_image(
+    executable: &Path,
+    path: &Path,
+    cancel: &mut watch::Receiver<bool>,
+) -> Result<Option<Vec<u8>>, String> {
+    let mut command = tokio::process::Command::new(executable);
+    command.args(["-v","error","-nostdin","-max_alloc","67108864","-threads","1","-filter_threads","1","-protocol_whitelist","file","-format_whitelist","image2","-f","image2","-pattern_type","none","-i"]).arg(path)
+        .args(["-frames:v","1","-an","-sn","-dn","-vf","scale=w='max(2,trunc(min(320,180*dar)/2)*2)':h='max(2,trunc(min(180,320/dar)/2)*2)',setsar=1","-c:v","mjpeg","-threads","1","-q:v","5","-f","image2pipe","pipe:1"]);
+    match media_process::capture(
+        &mut command,
+        cancel,
+        Duration::from_secs(5),
+        cache::MAX_IMAGE as u64,
+        "ffmpeg",
+        true,
+    )
+    .await?
+    {
+        None => Ok(None),
+        Some((bytes, status)) if status.success() && valid_image(&bytes) => Ok(Some(bytes)),
+        _ => Err("The provider thumbnail could not be decoded.".into()),
+    }
+}
+
+async fn generate(
+    ticket: &mut Ticket,
+    executable: PathBuf,
+    path: PathBuf,
+    seconds: Option<f64>,
+) -> Result<Option<Vec<u8>>, String> {
+    loop {
+        if *ticket.cancel.borrow() || ticket.analysis.is_stopped() {
+            return Ok(None);
+        }
+        let reply = if let Some(seconds) = seconds {
+            ticket.analysis.try_thumbnail(
+                executable.clone(),
+                path.clone(),
+                seconds,
+                ticket.token.clone(),
+            )
+        } else {
+            ticket
+                .analysis
+                .try_image(executable.clone(), path.clone(), ticket.token.clone())
+        };
+        if let Some(mut reply) = reply {
+            let result=tokio::select!{
+                value=&mut reply=>value,
+                _=async{let _=ticket.cancel.wait_for(|v|*v).await;}=>{ticket.analysis.cancel_thumbnail(&ticket.token);reply.await}
+            }.map_err(|_|"Thumbnail worker stopped")??;
+            if *ticket.cancel.borrow() {
+                return Ok(None);
+            }
+            if result.is_some() {
+                return Ok(result);
+            }
+        }
+        tokio::select! {_=ticket.cancel.wait_for(|v|*v)=>return Ok(None),_=tokio::time::sleep(Duration::from_millis(100))=>{}}
+    }
+}
+
 impl Library {
+    async fn provider_image(
+        &self,
+        id: i64,
+        file: &files::File,
+    ) -> Result<Option<(String, String, String)>, String> {
+        let file_copy = file.clone();
+        let provider = self
+            .database(move |db| db.provider_preview(id, &file_copy))
+            .await?;
+        provider
+            .map(|(path, revision)| {
+                let key = serde_json::to_string(&(
+                    "medal-preview-320x180-v1",
+                    fingerprint(id, file)?,
+                    &revision,
+                ))
+                .map_err(|e| e.to_string())?;
+                Ok((key, path, revision))
+            })
+            .transpose()
+    }
     // Disk hits do not acquire the extraction ticket or wait for the media worker.
     // Every lookup still resolves the library ID against a selected root and live file identity.
     pub(crate) async fn cached_thumbnail(
@@ -177,7 +283,21 @@ impl Library {
         if before.modified_ns.is_none() {
             return Ok(None);
         }
-        let key = fingerprint(id, &before)?;
+        let key = match self.provider_image(id, &before).await? {
+            Some((key, _, _)) => {
+                let lookup = key.clone();
+                if self
+                    .thumbnails
+                    .cache(move |cache| cache.failed(&lookup))
+                    .await?
+                {
+                    fingerprint(id, &before)?
+                } else {
+                    key
+                }
+            }
+            None => fingerprint(id, &before)?,
+        };
         let bytes = self.thumbnails.cache(move |cache| cache.get(&key)).await?;
         let Some(bytes) = bytes.filter(|bytes| valid_image(bytes)) else {
             return Ok(None);
@@ -207,6 +327,62 @@ impl Library {
         if *ticket.cancel.borrow() {
             return Ok(None);
         }
+        if let Some((provider_key, path, revision)) = self.provider_image(id, &before).await? {
+            let lookup = provider_key.clone();
+            if let Some(bytes) = self
+                .thumbnails
+                .cache(move |cache| cache.get(&lookup))
+                .await?
+                .filter(|b| valid_image(b))
+            {
+                if self.database(move |db| db.resolve_file(id)).await?.0 == before
+                    && !*ticket.cancel.borrow()
+                {
+                    return Ok(Some(bytes));
+                }
+                return Ok(None);
+            }
+            let lookup = provider_key.clone();
+            let failed = self
+                .thumbnails
+                .cache(move |cache| cache.failed(&lookup))
+                .await?;
+            let path_copy = path.clone();
+            let current = tauri::async_runtime::spawn_blocking(move || {
+                super::medal::paths::image(&path_copy)
+            })
+            .await
+            .map_err(|_| "Thumbnail validation stopped")?;
+            if !failed && current == Some((path.clone(), revision.clone())) {
+                match generate(&mut ticket, executable.clone(), PathBuf::from(&path), None).await {
+                    Ok(Some(bytes)) => {
+                        let source = path.clone();
+                        let unchanged = tauri::async_runtime::spawn_blocking(move || {
+                            super::medal::paths::image(&source)
+                        })
+                        .await
+                        .map_err(|_| "Thumbnail validation stopped")?;
+                        if unchanged != Some((path, revision)) {
+                            return Ok(None);
+                        }
+                        if self.database(move |db| db.resolve_file(id)).await?.0 != before {
+                            return Ok(None);
+                        }
+                        let image = bytes.clone();
+                        self.thumbnails
+                            .cache(move |cache| cache.put(&provider_key, &image))
+                            .await?;
+                        return Ok(Some(bytes));
+                    }
+                    Ok(None) => return Ok(None),
+                    Err(_) => {
+                        self.thumbnails
+                            .cache(move |cache| cache.fail(&provider_key))
+                            .await?;
+                    }
+                }
+            }
+        }
         let key = fingerprint(id, &before)?;
         let cache_key = key.clone();
         let cached = if before.modified_ns.is_some() {
@@ -226,35 +402,15 @@ impl Library {
         let seconds = duration
             .filter(|v| v.is_finite() && *v > 0.0)
             .map_or(0.0, |v| (v * 0.1).min(5.0));
-        let bytes = loop {
-            if *ticket.cancel.borrow() || analysis.is_stopped() {
-                return Ok(None);
-            }
-            if let Some(mut reply) = analysis.try_thumbnail(
-                executable.clone(),
-                PathBuf::from(&before.path),
-                seconds,
-                token.clone(),
-            ) {
-                let result = tokio::select! {
-                    value=&mut reply=>value,
-                    _=async {let _=ticket.cancel.wait_for(|v| *v).await;}=>{
-                        analysis.cancel_thumbnail(&token);
-                        reply.await
-                    }
-                }
-                .map_err(|_| "Thumbnail worker stopped")??;
-                if *ticket.cancel.borrow() {
-                    return Ok(None);
-                }
-                if let Some(bytes) = result {
-                    break bytes;
-                }
-            }
-            tokio::select! {
-                _=ticket.cancel.wait_for(|v| *v)=>return Ok(None),
-                _=tokio::time::sleep(Duration::from_millis(100))=>{}
-            }
+        let Some(bytes) = generate(
+            &mut ticket,
+            executable,
+            PathBuf::from(&before.path),
+            Some(seconds),
+        )
+        .await?
+        else {
+            return Ok(None);
         };
         let after = self.database(move |db| db.resolve_file(id)).await?.0;
         if before != after {
@@ -283,6 +439,7 @@ pub async fn library_thumbnail(
     cached_only: Option<bool>,
 ) -> Result<tauri::ipc::Response, String> {
     let library = library.get()?;
+    let _operation = library.operation().await?;
     if cached_only.unwrap_or(false) {
         return Ok(tauri::ipc::Response::new(
             library.cached_thumbnail(file_id).await?.unwrap_or_default(),

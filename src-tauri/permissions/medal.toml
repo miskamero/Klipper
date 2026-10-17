@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "medal-import"
+description = "Select a local Medal catalog natively, preview sanitized associations, and confirm or cancel this import by token. No arbitrary paths, SQL or executable names."
+commands.allow = ["medal_select", "medal_preview", "medal_commit", "medal_cancel", "medal_status"]

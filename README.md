@@ -2,17 +2,18 @@
 
 Klipper is a free, open-source desktop application for playing and inspecting local gameplay recordings. It opens your recordings read-only: no account, no uploads, and no telemetry.
 
-The project is still in development. Local folder discovery, a searchable library with video previews, playback, and media inspection are working. Editing tools, compression, and provider metadata imports are not yet implemented.
+The project is still in development. Local folder discovery, a searchable library with video previews, Medal catalog imports, playback, and media inspection are working. Editing tools and compression are not yet implemented.
 
 ## Features
 
 ### Local library
 
 - Add multiple folders through the native folder picker and discover recordings recursively.
-- Search filenames and paths, filter by folder, status or codec, and sort by date, name, duration or size.
+- Search titles, games, filenames and paths; filter by game, folder, status or codec; and sort by date, name, duration or size.
 - Rescan incrementally, cancel background indexing, or remove folders without deleting recordings.
 - Keep library metadata in a local SQLite database in Klipper's platform application-data directory.
 - Generate real frame previews only for visible recordings, with cancellable background work.
+- Import titles, descriptions, games, tags, creation/edit times, bookmarks, edit relationships and local thumbnails from Medal's `clips.json` catalog.
 
 Previews use FFmpeg and are cached separately in the platform application-cache directory, under thumbnails/previews-v1.sqlite3. JPEGs fit within 320×180 pixels; the cache retains at most 2,000 images and 64 MiB of image data (an 80 MiB database-file ceiling, plus temporary SQLite journal space). Changed recordings invalidate previews. Clearing this cache is safe while Klipper is closed.
 
@@ -85,9 +86,13 @@ If Rust linking fails because Windows SDK or MSVC libraries cannot be found, use
 3. Expand the inspector to examine video and audio-stream information.
 4. Use the player's fullscreen button for video-only fullscreen. Move the mouse to reveal the controls; press **Escape** to return.
 
-Use **Library** to return to your current search, filters and browsing position. Expand **Folders** to rescan or remove a source; removal affects only library associations, never source files. The database uses the platform application-data location for org.klipper.desktop (on Windows, %APPDATA%\org.klipper.desktop\library.sqlite3).
+Library starts on **Collections**, with tiles for All recordings, imported providers and selected folders. Folder views show immediate subfolders and recordings directly inside the current folder; search and filters apply to those direct recordings. Folder tile counts include descendants. Breadcrumbs and **← Collections** navigate back, and the optional sidebar provides the same shortcuts. Returning from playback restores your collection, search, filters and browsing position. **Manage library** contains folder rescan/removal and **Reset Library**, which requires confirmation and forgets library records and Klipper-managed previews without touching source files or standalone Player selections. The database uses the platform application-data location for org.klipper.desktop (on Windows, %APPDATA%\org.klipper.desktop\library.sqlite3).
 
-Klipper never scans drives or recording folders without selection. Opening an indexed recording revalidates it within a selected root and grants the same single-file playback access as the native file picker.
+Choose **Import from Medal** in Library, select a local `clips.json`, review the proposed associations, then confirm. The default enriches existing recordings only; adding new catalog-referenced videos requires a separate approval. Matching uses exact normalized paths or verified file identity. Ambiguous matches remain unresolved, and edits do not lend their titles to originals. Reimport explicitly to refresh provider metadata; Medal databases and remote images are not imported.
+
+Imported metadata remains separate from FFprobe properties. Date sorting prefers Medal's creation time when known, otherwise file modification time; creation time is not a verified capture timestamp. Local provider thumbnails take priority and are converted lazily into the same bounded preview cache, with FFmpeg frame extraction as fallback.
+
+Klipper never scans drives or recording folders without selection. Opening an indexed recording revalidates it against a selected folder or an exact-file grant confirmed during import, then grants the same single-file playback access as the native file picker. Library playback stays within Library; standalone Player selections remain separate and are not added to the database.
 
 ## Development
 

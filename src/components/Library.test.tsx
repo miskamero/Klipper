@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import Library from "./Library";
 import * as service from "../services/library";
 import { thumbnails } from "../services/thumbnails";
-vi.mock("../services/thumbnails", () => ({ thumbnails: { request: vi.fn() } }));
+vi.mock("../services/thumbnails", () => ({ thumbnails: { request: vi.fn(), clear: vi.fn() } }));
 
 vi.mock("@tauri-apps/api/core", () => ({ isTauri: () => true, invoke: vi.fn() }));
 vi.mock("../services/library", async (original) => ({
@@ -15,6 +15,7 @@ vi.mock("../services/library", async (original) => ({
 	rescanLibraryFolder: vi.fn(),
 	removeLibraryFolder: vi.fn(),
 	cancelLibraryScan: vi.fn(),
+	resetLibrary: vi.fn(),
 }));
 
 const root = {
@@ -27,6 +28,28 @@ const root = {
 };
 const status: service.LibraryStatus = {
 	roots: [root],
+	navigation: {
+		total: 43,
+		sources: [{ kind: "medal", recordings: 1 }],
+		folders: [
+			{
+				id: "root:7",
+				parentId: null,
+				rootId: 7,
+				name: "recordings",
+				path: root.path,
+				recordings: 43,
+			},
+			{
+				id: "7:1:1",
+				parentId: "root:7",
+				rootId: 7,
+				name: "nested",
+				path: root.path + "/nested",
+				recordings: 2,
+			},
+		],
+	},
 	progress: {
 		rootId: null,
 		phase: "",
@@ -56,7 +79,15 @@ const item: service.LibraryRecording = {
 };
 
 beforeEach(() => {
+	HTMLDialogElement.prototype.showModal = function () {
+		this.open = true;
+	};
+	HTMLDialogElement.prototype.close = function () {
+		this.open = false;
+	};
 	localStorage.clear();
+	localStorage.setItem("klipper.libraryBrowsing", JSON.stringify({ home: false }));
+	localStorage.setItem("klipper.librarySidebar", JSON.stringify({ collapsed: false }));
 	vi.mocked(service.libraryStatus).mockResolvedValue(status);
 	vi.mocked(service.queryLibrary).mockResolvedValue({ items: [item], total: 43, limit: 40 });
 });
@@ -94,8 +125,7 @@ it("opens a persistent library ID and retains filters and scroll across workspac
 	fireEvent.click(await screen.findByRole("button", { name: "Play " + item.name }));
 	expect(open).toHaveBeenCalledWith(91);
 	fireEvent.change(screen.getByLabelText("Sort recordings"), { target: { value: "size" } });
-	fireEvent.click(screen.getByRole("button", { name: /^Filters/ }));
-	fireEvent.change(screen.getByLabelText("Folder source"), { target: { value: "7" } });
+	fireEvent.click(screen.getByTitle(root.path));
 	await waitFor(() =>
 		expect(service.queryLibrary).toHaveBeenLastCalledWith(
 			expect.objectContaining({ sort: "size", rootId: 7 }),
@@ -109,7 +139,11 @@ it("opens a persistent library ID and retains filters and scroll across workspac
 	expect(screen.getByLabelText("Library recordings")).toBe(list);
 	expect(list.scrollTop).toBe(144);
 	expect((screen.getByLabelText("Sort recordings") as HTMLSelectElement).value).toBe("size");
-	expect((screen.getByLabelText("Folder source") as HTMLSelectElement).value).toBe("7");
+	expect(
+		within(screen.getByRole("complementary"))
+			.getByTitle(root.path)
+			.getAttribute("aria-current"),
+	).toBe("page");
 });
 
 it("debounces search and sends bounded pagination, sorting and filters to Rust", async () => {
@@ -138,7 +172,7 @@ it("adds, rescans and removes folders without accepting a frontend path", async 
 	await screen.findByRole("button", { name: "Play " + item.name });
 	fireEvent.click(screen.getByRole("button", { name: "Add folder" }));
 	await waitFor(() => expect(service.addLibraryFolder).toHaveBeenCalledWith());
-	fireEvent.click(screen.getByText("Folders"));
+	fireEvent.click(screen.getByRole("button", { name: /^Manage library/ }));
 	fireEvent.click(screen.getByRole("button", { name: "Rescan " + root.path }));
 	await waitFor(() => expect(service.rescanLibraryFolder).toHaveBeenCalledWith(7));
 	await waitFor(() =>
@@ -182,6 +216,7 @@ it("ignores an obsolete query result and cleans up polling on unmount", async ()
 		}),
 	);
 	const { unmount } = render(<Library active selecting={false} onOpen={vi.fn()} />);
+	await waitFor(() => expect(service.queryLibrary).toHaveBeenCalledOnce());
 	fireEvent.change(screen.getByLabelText("Sort recordings"), { target: { value: "name" } });
 	await screen.findByRole("button", { name: "Play " + item.name });
 	await act(async () => finish({ items: [], total: 0, limit: 40 }));
@@ -244,7 +279,7 @@ it("keeps secondary controls collapsed and returns keyboard focus when dismissed
 	fireEvent.keyDown(codec, { key: "Escape" });
 	expect(document.activeElement).toBe(filters);
 	expect(filters.getAttribute("aria-expanded")).toBe("false");
-	const folders = screen.getByRole("button", { name: /^Folders/ });
+	const folders = screen.getByRole("button", { name: /^Manage library/ });
 	fireEvent.click(folders);
 	const rescan = screen.getByRole("button", { name: "Rescan " + root.path });
 	rescan.focus();
@@ -382,13 +417,13 @@ it("shows and clears active filters without resetting the chosen sort or view", 
 	fireEvent.change(screen.getByLabelText("Sort recordings"), { target: { value: "duration" } });
 	fireEvent.click(screen.getByRole("button", { name: /^Filters/ }));
 	fireEvent.change(screen.getByLabelText("Video codec"), { target: { value: "hevc" } });
-	fireEvent.change(screen.getByLabelText("Folder source"), { target: { value: "7" } });
+	fireEvent.click(screen.getByTitle(root.path));
 	fireEvent.click(screen.getByRole("button", { name: /^Filters/ }));
-	expect(screen.getByLabelText("Active filters").textContent).toContain("Folder: recordings");
+	expect(screen.getByLabelText("Active filters").textContent).toContain("HEVC");
 	fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
 	await waitFor(() =>
 		expect(service.queryLibrary).toHaveBeenLastCalledWith(
-			expect.objectContaining({ rootId: null, codec: "all", sort: "duration", offset: 0 }),
+			expect.objectContaining({ rootId: 7, codec: "all", sort: "duration", offset: 0 }),
 		),
 	);
 	expect(screen.getByLabelText("Library recordings").dataset.view).toBe("list");
@@ -411,4 +446,295 @@ it("recovers from an empty filtered result with a useful reset action", async ()
 			expect.objectContaining({ search: "", offset: 0 }),
 		),
 	);
+});
+
+it("shows imported titles and games, keeps filenames inspectable, and filters by real games", async () => {
+	vi.mocked(service.queryLibrary).mockResolvedValue({
+		items: [
+			{
+				...item,
+				title: "Custom synthetic title",
+				game: "Synthetic game",
+				medalCreatedMs: 1_700_000_000_000,
+			},
+		],
+		total: 1,
+		limit: 40,
+		games: ["Synthetic game"],
+	});
+	render(<Library active selecting={false} onOpen={vi.fn()} />);
+	const card = await screen.findByRole("button", { name: "Play Custom synthetic title" });
+	expect(card.title).toContain(item.name);
+	fireEvent.click(screen.getByRole("button", { name: /^Filters/ }));
+	fireEvent.change(screen.getByLabelText("Game"), { target: { value: "Synthetic game" } });
+	await waitFor(() =>
+		expect(service.queryLibrary).toHaveBeenLastCalledWith(
+			expect.objectContaining({ game: "Synthetic game", offset: 0 }),
+		),
+	);
+	fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
+	await waitFor(() =>
+		expect(service.queryLibrary).toHaveBeenLastCalledWith(
+			expect.objectContaining({ game: null }),
+		),
+	);
+});
+
+it("persists provider/folder navigation and expansion while keeping search scoped to the collection", async () => {
+	const { unmount } = render(<Library active selecting={false} onOpen={vi.fn()} />);
+	await screen.findByRole("button", { name: "Play " + item.name });
+	fireEvent.click(screen.getByRole("button", { name: /^Medal/ }));
+	fireEvent.change(screen.getByLabelText("Search recordings"), {
+		target: { value: "synthetic" },
+	});
+	await waitFor(() =>
+		expect(service.queryLibrary).toHaveBeenLastCalledWith(
+			expect.objectContaining({ provider: "medal", rootId: null, search: "synthetic" }),
+		),
+	);
+	fireEvent.click(screen.getByRole("button", { name: "Expand recordings" }));
+	fireEvent.click(screen.getByTitle(root.path + "/nested"));
+	await waitFor(() =>
+		expect(service.queryLibrary).toHaveBeenLastCalledWith(
+			expect.objectContaining({
+				provider: null,
+				folderId: "7:1:1",
+				rootId: 7,
+				search: "synthetic",
+			}),
+		),
+	);
+	unmount();
+	render(<Library active selecting={false} onOpen={vi.fn()} />);
+	await waitFor(() =>
+		expect(
+			within(screen.getByRole("complementary"))
+				.getByTitle(root.path + "/nested")
+				.getAttribute("aria-current"),
+		).toBe("page"),
+	);
+	expect((screen.getByLabelText("Search recordings") as HTMLInputElement).value).toBe(
+		"synthetic",
+	);
+	fireEvent.click(screen.getByRole("button", { name: "Hide library sidebar" }));
+	expect(screen.queryByRole("button", { name: /^All recordings/ })).toBeNull();
+	fireEvent.click(screen.getByRole("button", { name: "Show library sidebar" }));
+	fireEvent.click(screen.getByRole("button", { name: /^All recordings/ }));
+	await waitFor(() =>
+		expect(service.queryLibrary).toHaveBeenLastCalledWith(
+			expect.objectContaining({
+				rootId: null,
+				folderId: null,
+				provider: null,
+				search: "synthetic",
+			}),
+		),
+	);
+});
+
+it("falls back to Collections when a persisted collection disappears", async () => {
+	localStorage.setItem(
+		"klipper.libraryBrowsing",
+		JSON.stringify({ ...initialForTest(), provider: "medal", offset: 40 }),
+	);
+	vi.mocked(service.libraryStatus).mockResolvedValue({
+		...status,
+		navigation: { total: 43, sources: [], folders: [] },
+	});
+	render(<Library active selecting={false} onOpen={vi.fn()} />);
+	await screen.findByLabelText("Collections homepage");
+	expect(service.queryLibrary).not.toHaveBeenCalled();
+});
+function initialForTest() {
+	return { sort: "date", filter: "all", codec: "all", search: "", descending: true };
+}
+
+it("requires confirmation and clears previews and browsing only after the native reset commits", async () => {
+	let finish!: (value: { cacheWarning: string | null }) => void;
+	vi.mocked(service.resetLibrary).mockReturnValue(
+		new Promise((resolve) => {
+			finish = resolve;
+		}),
+	);
+	const reset = vi.fn();
+	localStorage.setItem("klipper.inspectorWidth", "440");
+	render(<Library active selecting={false} onOpen={vi.fn()} onReset={reset} />);
+	await screen.findByRole("button", { name: "Play " + item.name });
+	fireEvent.click(screen.getByRole("button", { name: "List view" }));
+	fireEvent.click(screen.getByRole("button", { name: /^Manage library/ }));
+	fireEvent.click(screen.getByRole("button", { name: "Reset Library…" }));
+	expect(service.resetLibrary).not.toHaveBeenCalled();
+	fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+	expect(service.resetLibrary).not.toHaveBeenCalled();
+	fireEvent.click(screen.getByRole("button", { name: "Reset Library…" }));
+	fireEvent.click(screen.getByRole("button", { name: "Reset Library" }));
+	expect(thumbnails.clear).not.toHaveBeenCalled();
+	expect(localStorage.getItem("klipper.libraryView")).toBe("list");
+	vi.mocked(service.libraryStatus).mockResolvedValue({
+		...status,
+		roots: [],
+		navigation: { total: 0, sources: [], folders: [] },
+	});
+	vi.mocked(service.queryLibrary).mockResolvedValue({ items: [], total: 0, limit: 40 });
+	await act(async () => finish({ cacheWarning: null }));
+	await screen.findByText("Your recordings start here");
+	expect(thumbnails.clear).toHaveBeenCalledOnce();
+	expect(reset).toHaveBeenCalledOnce();
+	expect(screen.getByLabelText("Collections homepage")).toBeTruthy();
+	expect(localStorage.getItem("klipper.inspectorWidth")).toBe("440");
+});
+
+it("retains browsing on reset failure and reports a cache-cleanup warning after a committed reset", async () => {
+	vi.mocked(service.resetLibrary)
+		.mockRejectedValueOnce("Synthetic transaction failure")
+		.mockResolvedValueOnce({
+			cacheWarning: "Library cleared; synthetic cache cleanup pending",
+		});
+	render(<Library active selecting={false} onOpen={vi.fn()} />);
+	await screen.findByRole("button", { name: "Play " + item.name });
+	fireEvent.click(screen.getByRole("button", { name: /^Manage library/ }));
+	fireEvent.click(screen.getByRole("button", { name: "Reset Library…" }));
+	fireEvent.click(screen.getByRole("button", { name: "Reset Library" }));
+	expect(await screen.findByRole("alert")).toHaveProperty(
+		"textContent",
+		"Synthetic transaction failure",
+	);
+	expect(thumbnails.clear).not.toHaveBeenCalled();
+	expect(screen.getByRole("button", { name: "Play " + item.name })).toBeTruthy();
+	fireEvent.click(screen.getByRole("button", { name: "Reset Library…" }));
+	fireEvent.click(screen.getByRole("button", { name: "Reset Library" }));
+	expect(await screen.findByRole("alert")).toHaveProperty(
+		"textContent",
+		"Library cleared; synthetic cache cleanup pending",
+	);
+	expect(thumbnails.clear).toHaveBeenCalledOnce();
+});
+
+it("starts on an empty Collections homepage with a collapsed sidebar and no thumbnail work", async () => {
+	localStorage.clear();
+	vi.mocked(service.libraryStatus).mockResolvedValue({
+		...status,
+		roots: [],
+		navigation: { total: 0, sources: [], folders: [] },
+	});
+	render(<Library active selecting={false} onOpen={vi.fn()} />);
+	await screen.findByText("Your recordings start here");
+	expect(screen.getByRole("button", { name: "Show library sidebar" })).toBeTruthy();
+	expect(screen.queryByRole("button", { name: /^Medal/ })).toBeNull();
+	expect(service.queryLibrary).not.toHaveBeenCalled();
+	expect(thumbnails.request).not.toHaveBeenCalled();
+	const home = within(screen.getByLabelText("Collections homepage"));
+	fireEvent.click(home.getByRole("button", { name: /^All recordings/ }));
+	await waitFor(() =>
+		expect(service.queryLibrary).toHaveBeenCalledWith(
+			expect.objectContaining({
+				home: false,
+				rootId: null,
+				provider: null,
+				directOnly: false,
+			}),
+		),
+	);
+	fireEvent.click(screen.getByRole("button", { name: "← Collections" }));
+	expect(screen.getByLabelText("Collections homepage")).toBeTruthy();
+});
+
+it("browses folder tiles and breadcrumbs without flattening descendants and restores playback origin", async () => {
+	localStorage.clear();
+	vi.mocked(service.queryLibrary).mockImplementation(async (query) => ({
+		items: query.folderId ? [item] : [],
+		total: query.folderId ? 1 : 0,
+		limit: 40,
+	}));
+	const open = vi.fn();
+	const { rerender } = render(<Library active selecting={false} onOpen={open} />);
+	const home = await screen.findByLabelText("Collections homepage");
+	fireEvent.click(within(home).getByTitle(root.path));
+	await waitFor(() =>
+		expect(service.queryLibrary).toHaveBeenLastCalledWith(
+			expect.objectContaining({ rootId: 7, directOnly: true, home: false }),
+		),
+	);
+	expect(screen.queryByRole("button", { name: "Play " + item.name })).toBeNull();
+	fireEvent.click(
+		within(screen.getByRole("region", { name: "Subfolders" })).getByTitle(
+			root.path + "/nested",
+		),
+	);
+	await screen.findByRole("button", { name: "Play " + item.name });
+	expect(service.queryLibrary).toHaveBeenLastCalledWith(
+		expect.objectContaining({ rootId: 7, folderId: "7:1:1", directOnly: true }),
+	);
+	const browser = screen.getByLabelText("Library recordings");
+	fireEvent.click(screen.getByRole("button", { name: "Show library sidebar" }));
+	expect(
+		within(screen.getByRole("complementary"))
+			.getByTitle(root.path + "/nested")
+			.getAttribute("aria-current"),
+	).toBe("page");
+	browser.scrollTop = 180;
+	fireEvent.scroll(browser);
+	fireEvent.click(screen.getByRole("button", { name: "Play " + item.name }));
+	rerender(<Library active={false} selecting={false} onOpen={open} />);
+	rerender(<Library active selecting={false} onOpen={open} />);
+	expect(browser.scrollTop).toBe(180);
+	expect(document.activeElement?.getAttribute("aria-label")).toBe("Play " + item.name);
+	const breadcrumbs = within(screen.getByRole("navigation", { name: "Collection location" }));
+	expect(breadcrumbs.getByRole("button", { name: "nested" }).getAttribute("aria-current")).toBe(
+		"page",
+	);
+	fireEvent.click(breadcrumbs.getByRole("button", { name: "recordings" }));
+	await waitFor(() =>
+		expect(service.queryLibrary).toHaveBeenLastCalledWith(
+			expect.objectContaining({ rootId: 7, folderId: null, directOnly: true, offset: 0 }),
+		),
+	);
+	fireEvent.click(screen.getByRole("button", { name: "← Collections" }));
+	expect(screen.getByLabelText("Collections homepage")).toBeTruthy();
+});
+
+it("shows multiple real root and provider tiles and synchronizes main navigation with saved sidebar choices", async () => {
+	localStorage.clear();
+	vi.mocked(service.libraryStatus).mockResolvedValue({
+		...status,
+		roots: [root, { ...root, id: 8, path: "/synthetic/second" }],
+		navigation: {
+			...status.navigation!,
+			folders: [
+				...status.navigation!.folders,
+				{
+					id: "root:8",
+					parentId: null,
+					rootId: 8,
+					name: "second",
+					path: "/synthetic/second",
+					recordings: 4,
+				},
+			],
+		},
+	});
+	const { unmount } = render(<Library active selecting={false} onOpen={vi.fn()} />);
+	const home = within(await screen.findByLabelText("Collections homepage"));
+	await home.findByTitle("/synthetic/second");
+	expect(home.getByRole("button", { name: /^Medal/ })).toBeTruthy();
+	fireEvent.click(home.getByTitle(root.path));
+	await screen.findByRole("button", { name: "Play " + item.name });
+	fireEvent.click(screen.getByRole("button", { name: "Show library sidebar" }));
+	const sidebar = within(screen.getByRole("complementary"));
+	expect(sidebar.getByTitle(root.path).getAttribute("aria-current")).toBe("page");
+	fireEvent.click(sidebar.getByRole("button", { name: /^Medal/ }));
+	await waitFor(() =>
+		expect(service.queryLibrary).toHaveBeenLastCalledWith(
+			expect.objectContaining({ provider: "medal", rootId: null, directOnly: false }),
+		),
+	);
+	unmount();
+	render(<Library active selecting={false} onOpen={vi.fn()} />);
+	await screen.findByRole("button", { name: "Play " + item.name });
+	expect(screen.getByRole("button", { name: "Hide library sidebar" })).toBeTruthy();
+	expect(
+		within(screen.getByRole("complementary"))
+			.getByRole("button", { name: /^Medal/ })
+			.getAttribute("aria-current"),
+	).toBe("page");
 });

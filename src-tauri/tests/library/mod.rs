@@ -1,6 +1,7 @@
 use super::{db::Db, files, query::Query, *};
 use std::{fs, path::PathBuf};
 use tempfile::TempDir;
+mod navigation_reset;
 mod scan;
 
 fn setup() -> (TempDir, Db, Root) {

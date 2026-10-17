@@ -72,6 +72,53 @@ it("restores the standalone transport position without retaining a second active
 	expect(media.deactivateRecording).toHaveBeenCalledWith(2);
 });
 
+it("forgets only Library after native reset and preserves the independent standalone selection", async () => {
+	const { result } = renderHook(useRecordingWorkspaces);
+	await act(async () => result.current.open());
+	await waitFor(() => expect(result.current.current?.recording.id).toBe(1));
+	act(() =>
+		result.current.playbackChanged({ position: 6, speed: 1.5, volume: 25, muted: false }),
+	);
+	await act(async () => result.current.open(501));
+	await waitFor(() => expect(result.current.view).toBe("libraryPlayback"));
+	act(() => result.current.forgetLibrary());
+	expect(result.current.view).toBe("library");
+	expect(result.current.current).toBeNull();
+	act(() => result.current.navigate("player"));
+	await waitFor(() => expect(result.current.current?.recording.id).toBe(3));
+	expect(result.current.current?.resume).toEqual({
+		position: 6,
+		speed: 1.5,
+		volume: 25,
+		muted: false,
+	});
+	const calls = vi.mocked(media.deactivateRecording).mock.calls.length;
+	act(() => result.current.forgetLibrary());
+	expect(result.current.current?.recording.id).toBe(3);
+	expect(media.deactivateRecording).toHaveBeenCalledTimes(calls);
+});
+
+it("ignores an indexed selection returned after its Library was reset", async () => {
+	let finish!: (value: Awaited<ReturnType<typeof openLibraryRecording>>) => void;
+	vi.mocked(openLibraryRecording).mockReturnValue(
+		new Promise((resolve) => {
+			finish = resolve;
+		}),
+	);
+	const { result } = renderHook(useRecordingWorkspaces);
+	let pending!: Promise<void>;
+	act(() => {
+		pending = result.current.open(501);
+	});
+	act(() => result.current.forgetLibrary());
+	await act(async () => {
+		finish({ recording: two, info: null });
+		await pending;
+	});
+	expect(result.current.view).toBe("library");
+	expect(result.current.current).toBeNull();
+});
+
 it("discards superseded analysis and releases stale activations during rapid navigation", async () => {
 	let oldAnalysis!: (value: media.MediaInfo | null) => void;
 	vi.mocked(media.analyzeRecording).mockReturnValueOnce(

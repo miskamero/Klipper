@@ -57,6 +57,33 @@ const deliver = (error = "") =>
 		);
 	});
 
+it("supersedes a generated preview when a provider image revision is imported or replaced", () => {
+	const { rerender } = render(<Thumbnail recording={source} active root={root} />);
+	act(() => intersect(true));
+	deliver();
+	const generated = vi.mocked(thumbnails.request).mock.calls.at(-1)![1];
+	rerender(
+		<Thumbnail
+			recording={{ ...source, previewRevision: "medal-image-v1" }}
+			active
+			root={root}
+		/>,
+	);
+	act(() => intersect(true));
+	deliver();
+	expect(vi.mocked(thumbnails.request).mock.calls.at(-1)![1]).not.toBe(generated);
+	expect(cancel).toHaveBeenCalled();
+	rerender(
+		<Thumbnail
+			recording={{ ...source, previewRevision: "medal-image-v2" }}
+			active
+			root={root}
+		/>,
+	);
+	act(() => intersect(true));
+	expect(vi.mocked(thumbnails.request).mock.calls.at(-1)![1]).toContain("medal-image-v2");
+});
+
 it("requests only intersecting recordings and releases the preview lease offscreen", () => {
 	render(<Thumbnail recording={source} active root={root} />);
 	expect(thumbnails.request).not.toHaveBeenCalled();

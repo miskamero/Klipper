@@ -24,6 +24,21 @@ export interface ScanProgress {
 export interface LibraryStatus {
 	roots: LibraryRoot[];
 	progress: ScanProgress;
+	navigation?: LibraryNavigation;
+}
+
+export interface LibraryFolder {
+	id: string;
+	parentId: string | null;
+	rootId: number;
+	name: string;
+	path: string;
+	recordings: number;
+}
+export interface LibraryNavigation {
+	total: number;
+	sources: { kind: string; recordings: number }[];
+	folders: LibraryFolder[];
 }
 
 export interface LibraryRecording {
@@ -42,22 +57,33 @@ export interface LibraryRecording {
 	frameRate: number | null;
 	audioCount: number | null;
 	error: string | null;
+	title?: string | null;
+	game?: string | null;
+	medalCreatedMs?: number | null;
+	metadataConflict?: boolean;
+	previewRevision?: string | null;
 }
 
 export interface LibraryQuery {
+	home?: boolean;
+	directOnly?: boolean;
 	search: string;
 	rootId: number | null;
+	folderId?: string | null;
+	provider?: string | null;
 	sort: string;
 	descending: boolean;
 	filter: string;
 	codec: string;
 	offset: number;
+	game?: string | null;
 }
 
 export interface LibraryPage {
 	items: LibraryRecording[];
 	total: number;
 	limit: number;
+	games?: string[];
 }
 
 export function scanActive(phase: string): boolean {
@@ -84,7 +110,9 @@ export async function libraryStatus(): Promise<LibraryStatus> {
 
 export async function queryLibrary(query: LibraryQuery): Promise<LibraryPage> {
 	if (!isTauri()) return { items: [], total: 0, limit: 40 };
-	return invoke("library_query", { query });
+	const nativeQuery = { ...query };
+	delete nativeQuery.home;
+	return invoke("library_query", { query: nativeQuery });
 }
 
 export function addLibraryFolder(): Promise<LibraryRoot | null> {
@@ -103,9 +131,15 @@ export function cancelLibraryScan(): Promise<void> {
 	return invoke("library_cancel");
 }
 
+export function resetLibrary(): Promise<{ cacheWarning: string | null }> {
+	return invoke("library_reset", { confirmed: true });
+}
+
 export function openLibraryRecording(fileId: number): Promise<{
 	recording: Recording;
 	info: MediaInfo | null;
+	metadata?: import("./medal").ImportedMetadata[];
+	display_title?: string | null;
 }> {
 	return invoke("library_open", { fileId });
 }

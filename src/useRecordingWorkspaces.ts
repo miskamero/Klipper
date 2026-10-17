@@ -10,6 +10,7 @@ import {
 	type MediaInfo,
 } from "./services/media";
 import type { PlaybackPosition } from "./services/playback";
+import type { ImportedMetadata } from "./services/medal";
 
 type View = "library" | "libraryPlayback" | "player";
 type Context = "library" | "standalone";
@@ -19,6 +20,8 @@ interface Selection {
 	analyzing: boolean;
 	error: string;
 	resume?: PlaybackPosition;
+	metadata?: ImportedMetadata[];
+	displayTitle?: string | null;
 }
 
 // Two session selections, one mounted player. All ownership transfers await native stop/hide.
@@ -34,6 +37,7 @@ export default function useRecordingWorkspaces() {
 	const mounted = useRef(false);
 	const picking = useRef(false);
 	const sequence = useRef(0);
+	const libraryEpoch = useRef(0);
 	const owner = useRef<Recording | null>(null);
 	const transitions = useRef<Promise<void>>(Promise.resolve());
 	const positions = useRef<Partial<Record<Context, PlaybackPosition>>>({});
@@ -122,22 +126,29 @@ export default function useRecordingWorkspaces() {
 		setSelecting(true);
 		setError("");
 		let recording: Recording | null;
+		const epoch = libraryEpoch.current;
 		let info: MediaInfo | null = null;
+		let metadata: ImportedMetadata[] | undefined;
+		let displayTitle: string | null | undefined;
 		try {
 			if (fileId === undefined) recording = await selectRecording();
 			else {
 				const result = await openLibraryRecording(fileId);
 				recording = result.recording;
 				info = result.info;
+				metadata = result.metadata;
+				displayTitle = result.display_title;
 			}
 		} catch (failure) {
-			if (mounted.current) setError(errorMessage(failure));
+			if (mounted.current && (fileId === undefined || epoch === libraryEpoch.current))
+				setError(errorMessage(failure));
 			return;
 		} finally {
 			picking.current = false;
 			if (mounted.current) setSelecting(false);
 		}
 		if (!recording) return;
+		if (fileId !== undefined && epoch !== libraryEpoch.current) return;
 		if (!mounted.current) {
 			void deactivateRecording(recording.id).catch(() => {});
 			return;
@@ -157,7 +168,14 @@ export default function useRecordingWorkspaces() {
 				if (previousOwner) await deactivateRecording(previousOwner.id);
 				owner.current = selected;
 				if (!mounted.current) return;
-				const selection = { recording: selected, info, analyzing: false, error: "" };
+				const selection = {
+					recording: selected,
+					info,
+					analyzing: false,
+					error: "",
+					metadata,
+					displayTitle,
+				};
 				save(context, selection);
 				if (!valid(token)) return;
 				setReady(true);
@@ -170,6 +188,19 @@ export default function useRecordingWorkspaces() {
 	const context: Context = view === "player" ? "standalone" : "library";
 	const current = ready && view !== "library" ? selections[context] : null;
 	return {
+		forgetLibrary: () => {
+			libraryEpoch.current++;
+			setSelections((previous) => ({ ...previous, library: null }));
+			positions.current.library = undefined;
+			if (view !== "player") {
+				// Native reset already stopped and forgot the library owner.
+				sequence.current++;
+				owner.current = null;
+				setView("library");
+				setReady(true);
+				setError("");
+			}
+		},
 		view,
 		navigate,
 		open,

@@ -1,4 +1,4 @@
-import type { RefObject } from "react";
+import type { RefObject, ReactNode } from "react";
 import { bytes, time } from "../lib/format";
 import type { LibraryRecording } from "../services/library";
 import Thumbnail from "./Thumbnail";
@@ -36,6 +36,7 @@ export default function LibraryBrowser({
 	selectedId,
 	onOpen,
 	onScroll,
+	children,
 }: {
 	items: LibraryRecording[];
 	view: LibraryView;
@@ -46,6 +47,7 @@ export default function LibraryBrowser({
 	selectedId: number | null;
 	onOpen: (id: number) => void;
 	onScroll: () => void;
+	children?: ReactNode;
 }) {
 	return (
 		<div
@@ -105,16 +107,21 @@ export default function LibraryBrowser({
 				buttons[next]?.focus();
 			}}
 		>
-			{view === "list" && (
+			{children}
+			{view === "list" && items.length > 0 && (
 				<div className={styles.columnHeadings} aria-hidden="true">
 					<span>Recording</span>
-					<span>Modified</span>
+					<span>Date</span>
 					<span>Video</span>
 					<span>Size</span>
 				</div>
 			)}
 			<ul className={view === "grid" ? styles.grid : styles.rows}>
 				{items.map((item) => {
+					const title = item.title || item.name;
+					const date = item.medalCreatedMs ?? item.modifiedMs;
+					const dateMeaning =
+						item.medalCreatedMs != null ? "Medal created" : "File modified";
 					const unavailable = item.availability !== "available";
 					const problem = unavailable
 						? item.availability === "missing"
@@ -129,7 +136,7 @@ export default function LibraryBrowser({
 								className={styles.recording}
 								data-recording-id={item.id}
 								disabled={selecting || unavailable}
-								aria-label={"Play " + item.name}
+								aria-label={"Play " + title}
 								aria-current={selectedId === item.id ? "true" : undefined}
 								title={
 									item.name +
@@ -148,25 +155,20 @@ export default function LibraryBrowser({
 									)}
 								</span>
 								<span className={styles.identity}>
-									<strong>{item.name}</strong>
+									<strong>{title}</strong>
 									<span className={styles.cardDetails}>
 										{problem ? (
 											<span className={styles.problem}>{problem}</span>
 										) : (
-											<span
-												title={
-													"File modified: " +
-													modifiedDate(item.modifiedMs)
-												}
-											>
-												{modifiedDate(item.modifiedMs)}
+											<span title={dateMeaning + ": " + modifiedDate(date)}>
+												{item.game || modifiedDate(date)}
 											</span>
 										)}
 										<span>{videoLabel(item)}</span>
 									</span>
 								</span>
 								<span className={styles.modified}>
-									{modifiedDate(item.modifiedMs)}
+									<span title={dateMeaning}>{modifiedDate(date)}</span>
 								</span>
 								<span className={styles.media}>{videoLabel(item)}</span>
 								<span className={styles.file}>{bytes(item.size)}</span>

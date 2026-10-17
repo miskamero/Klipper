@@ -34,6 +34,78 @@ fn setup() -> (tempfile::TempDir, Arc<Library>, i64, PathBuf, PathBuf) {
 }
 
 #[tokio::test]
+async fn library_reset_reaps_active_thumbnail_work_and_does_not_interrupt_foreground_analysis() {
+    let (_temp, library, id, path, executable) = setup();
+    let slow = path.with_file_name("slow-reset.mp4");
+    fs::rename(&path, &slow).unwrap();
+    let source = slow.clone();
+    library
+        .database(move |db| {
+            let root = db.roots()?[0].id;
+            db.discover(root, 2, &files::describe(&source)?)?;
+            Ok(())
+        })
+        .await
+        .unwrap();
+    let analysis = Arc::new(Analysis::default());
+    let owner = library.clone();
+    let process = analysis.clone();
+    let tool = executable.clone();
+    let worker = tokio::spawn(async move {
+        owner
+            .thumbnail(id, "reset-test".into(), tool, process)
+            .await
+    });
+    tokio::time::timeout(Duration::from_secs(10), async {
+        while !slow.with_extension("started").exists() {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    tokio::time::timeout(
+        Duration::from_secs(10),
+        library.reset(analysis.clone(), || async { Ok(()) }),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    assert!(worker.await.unwrap().unwrap().is_none());
+    assert!(analysis.is_idle());
+    assert_eq!(
+        library
+            .database(|db| db.query(Default::default()))
+            .await
+            .unwrap()
+            .total,
+        0
+    );
+    fs::remove_file(slow.with_extension("started")).unwrap();
+    let foreground = analysis.request(executable, slow.clone());
+    tokio::time::timeout(Duration::from_secs(10), async {
+        while !slow.with_extension("started").exists() {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    library
+        .reset(analysis.clone(), || async { Ok(()) })
+        .await
+        .unwrap();
+    assert!(
+        !analysis.is_idle(),
+        "independent foreground analysis was cancelled by Library reset"
+    );
+    analysis.supersede();
+    assert!(foreground.await.unwrap().unwrap().is_none());
+    assert_eq!(fs::read(&slow).unwrap(), b"synthetic input");
+    assert!(!slow.parent().unwrap().join("overlap").exists());
+    library.shutdown(&analysis).await;
+    analysis.shutdown().await;
+}
+
+#[tokio::test]
 async fn cached_images_survive_restart_invalidate_changed_inputs_and_never_bypass_roots() {
     let (temp, library, id, path, executable) = setup();
     let analysis = Arc::new(Analysis::default());
