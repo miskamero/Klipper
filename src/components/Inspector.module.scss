@@ -3,10 +3,11 @@
 .inspector {
 	min-width: 0;
 	padding: 20px 16px;
+	color: t.$text-primary;
 	h2,
 	h3 {
 		margin: 0;
-		font-size: 16px;
+		font-size: 14px;
 		font-weight: 600;
 	}
 	p {
@@ -16,15 +17,15 @@
 		overflow-wrap: anywhere;
 	}
 	dl {
-		margin: 12px 0;
+		margin: 8px 0 16px;
 	}
 	dl > div {
 		display: grid;
-		grid-template-columns: minmax(96px, 0.85fr) minmax(0, 1.4fr);
+		grid-template-columns: minmax(84px, 0.85fr) minmax(0, 1.4fr);
 		gap: 12px;
 		padding: 8px 0;
 		border-bottom: 1px solid t.$border;
-		font-size: 14px;
+		font-size: 13px;
 		line-height: 1.5;
 	}
 	dt {
@@ -32,111 +33,47 @@
 		overflow-wrap: anywhere;
 	}
 	dd {
+		min-width: 0;
 		margin: 0;
-		text-align: left;
 		overflow-wrap: anywhere;
 		user-select: text;
 	}
-	.error {
-		border-left: 2px solid t.$accent;
-		padding-left: 12px;
-		color: t.$text-primary;
+	dd dl > div {
+		display: block;
+		padding: 8px 0;
+	}
+	dd dl dd {
+		margin-top: 4px;
 	}
 	summary {
 		cursor: pointer;
+		padding: 8px 4px;
 		border-radius: 4px;
+		font-size: 13px;
+		line-height: 1.5;
+		overflow-wrap: anywhere;
 		&:hover {
 			background: t.$surface-elevated;
 		}
-	}
-}
-.heading,
-.audioHeading {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: 8px;
-}
-.heading {
-	padding-bottom: 12px;
-	border-bottom: 1px solid t.$border;
-}
-.audioHeading {
-	margin-top: 20px;
-	> span {
-		padding: 4px 8px;
-		border-radius: 4px;
-		background: t.$surface-elevated;
-		color: t.$text-primary;
-		font-size: 13px;
-	}
-}
-.note {
-	margin: 8px 0 12px;
-}
-.technical {
-	summary {
-		padding: 8px 0;
-		color: t.$text-secondary;
-		font-size: 13px;
-	}
-}
-.track {
-	border-top: 1px solid t.$border;
-	&:last-child {
-		border-bottom: 1px solid t.$border;
-	}
-	summary {
-		min-height: 44px;
-		padding: 8px 4px;
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		font-size: 13px;
-		&::before {
-			content: "\203A";
+		&::marker {
 			color: t.$text-secondary;
-			font-size: 18px;
-		}
-		&::-webkit-details-marker {
-			display: none;
 		}
 	}
-	&[open] summary::before {
-		transform: rotate(90deg);
+	ul {
+		padding-left: 20px;
+		overflow-wrap: anywhere;
 	}
-	&[open] summary {
-		background: t.$surface-elevated;
+	li {
+		margin: 4px 0;
 	}
-	dl {
-		margin: 0 4px 12px;
-	}
-}
-.number {
-	color: t.$accent;
-	font-variant-numeric: tabular-nums;
-}
-.codec {
-	font-weight: 600;
-}
-.layout {
-	color: t.$text-secondary;
-	min-width: 0;
-	overflow-wrap: anywhere;
-}
-.language {
-	margin-left: auto;
-	color: t.$text-secondary;
-	overflow-wrap: anywhere;
-	min-width: 0;
 }
 
 .identity {
-	padding-bottom: 16px;
+	padding-bottom: 12px;
 	border-bottom: 1px solid t.$border;
 	h1 {
-		margin: 8px 0;
-		font-size: 21px;
+		margin: 4px 0 12px;
+		font-size: 20px;
 		font-weight: 600;
 		line-height: 1.35;
 		overflow-wrap: anywhere;
@@ -146,21 +83,153 @@
 		margin: 0;
 	}
 	.kicker {
-		font-size: 12px;
-		letter-spacing: 0.8px;
 		color: t.$text-secondary;
-		margin-bottom: 8px;
+		font-size: 12px;
+	}
+	dl {
+		margin: 0;
+	}
+	dl > div {
+		padding: 4px 0;
+		border: 0;
 	}
 }
-.file {
+
+.section {
 	border-bottom: 1px solid t.$border;
-	margin-bottom: 20px;
-	summary {
-		padding: 12px 0;
+	> summary {
+		min-height: 48px;
+		padding: 12px 4px;
+		font-size: 15px;
+		font-weight: 600;
+	}
+	> p {
+		margin: 8px 0 12px;
+	}
+	&[open] {
+		padding-bottom: 12px;
+	}
+}
+
+.source {
+	margin: 8px 0;
+	> summary {
+		font-size: 14px;
+		font-weight: 600;
+	}
+}
+
+.audio {
+	padding-bottom: 12px;
+	border-bottom: 1px solid t.$border;
+}
+
+.audioHeading {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	margin-top: 16px;
+	> span {
 		color: t.$text-secondary;
 		font-size: 13px;
+		font-variant-numeric: tabular-nums;
 	}
 }
-.propertiesHeading {
-	margin-top: 20px !important;
+.note {
+	margin: 8px 0 12px;
+}
+.track {
+	border-top: 1px solid t.$border;
+	summary {
+		min-height: 40px;
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		&::before {
+			content: "\203A";
+			color: t.$text-secondary;
+			font-size: 18px;
+		}
+		&::-webkit-details-marker {
+			display: none;
+		}
+	}
+	&[open] > summary::before {
+		transform: rotate(90deg);
+	}
+	dl {
+		margin: 0 4px 8px;
+	}
+}
+.number {
+	color: t.$accent;
+	font-variant-numeric: tabular-nums;
+}
+.codec {
+	font-weight: 600;
+}
+.layout,
+.language {
+	color: t.$text-secondary;
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+.language {
+	margin-left: auto;
+}
+.error {
+	border-left: 2px solid t.$warning;
+	padding-left: 12px;
+	margin: 12px 0;
+}
+.copyValue {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	align-items: start;
+	gap: 4px;
+	> span {
+		min-width: 0;
+		overflow-wrap: anywhere;
+	}
+	button {
+		padding: 4px;
+		min-width: 32px;
+		min-height: 32px;
+		background: transparent;
+	}
+	svg {
+		display: block;
+		width: 16px;
+		height: 16px;
+		fill: none;
+		stroke: currentColor;
+		stroke-width: 1.5;
+	}
+}
+.copyStatus {
+	grid-column: 1 / -1;
+	font-size: 12px;
+	color: t.$text-secondary;
+}
+.clippedValue {
+	display: -webkit-box;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 3;
+	overflow: hidden;
+}
+.fullValue {
+	grid-column: 1 / -1;
+	> summary {
+		padding: 4px 0;
+		font-size: 12px;
+		color: t.$text-secondary;
+	}
+}
+.multiline {
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+.metadataItems {
+	min-width: 0;
 }
