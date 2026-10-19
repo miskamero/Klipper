@@ -1,106 +1,94 @@
 # Klipper
 
-Klipper is a free, open-source desktop application for playing and inspecting local gameplay recordings. It opens your recordings read-only: no account, no uploads, and no telemetry.
+A free, open-source desktop application built with Tauri, React, and Rust for organizing, playing, and editing mainly gameplay recordings.
 
-The project is still in development. Local folder discovery, a searchable library with video previews, Medal catalog imports, playback, and media inspection are working. Editing tools and compression are not yet implemented.
+Klipper brings your local clips into one searchable library, recovers titles and other metadata from Medal, and provides native video playback and a simple trim-and-export editor—all without uploading your recordings or modifying the originals.
+
+**Find your clips. Watch your moments. Make the cut.**
+
 
 ## Features
 
-### Local library
+### Clip Library
 
-- Add multiple folders through the native folder picker and discover recordings recursively.
-- Search titles, games, filenames and paths; filter by game, folder, status or codec; and sort by date, name, duration or size.
-- Rescan incrementally, cancel background indexing, or remove folders without deleting recordings.
-- Keep library metadata in a local SQLite database in Klipper's platform application-data directory.
-- Generate real frame previews only for visible recordings, with cancellable background work.
-- Import titles, games, tags, timestamps, bookmarks and local thumbnails from Medal's `clips.json` or supported SQLite `.db` databases. Explicit JSON edit relationships are retained; SQLite parent/film-reel relationships are not inferred.
+- **Collections:** Browse all recordings, imported sources, or individual folders in a visual thumbnail gallery or compact list.
+- **Folder discovery:** Add folders, index recordings recursively, and rescan without touching the original files.
+- **Search and filters:** Find clips by title, game, or filename; filter and sort recordings using their available metadata.
+- **Medal integration:** Import clip titles, games, timestamps, tags, bookmarks, and thumbnails from `clips.json` or supported Medal SQLite databases. Review matches before importing.
+- **Local storage:** Keep library metadata in SQLite and reuse cached thumbnails for fast browsing. Resetting the library never deletes your recordings.
 
-Previews use FFmpeg and are cached separately in the platform application-cache directory, under thumbnails/previews-v1.sqlite3. JPEGs fit within 320×180 pixels; the cache retains at most 2,000 images and 64 MiB of image data (an 80 MiB database-file ceiling, plus temporary SQLite journal space). Changed recordings invalidate previews. Clearing this cache is safe while Klipper is closed.
+### Video Player
 
-Discovery skips symbolic links and Windows reparse points. Unchanged recordings reuse cached inspection results; missing files retain their historical metadata. Filesystem identities help recognize moves within selected folders and hard links where supported; uncertain matches remain separate. Folders are only scanned after you add or explicitly rescan them.
+- Native **libmpv playback on Windows**, including HEVC/H.265 and supported hardware-accelerated decoding.
+- Play, pause, seek, adjust volume, change playback speed (**0.25×–3×**), and use video-only fullscreen.
+- Inspect video properties and individual audio streams in a collapsible details panel.
+- Open clips from your library or play any supported local file in the standalone Player, without adding it to the library.
 
-### Video playback
+### Video Editor
 
-- Native **libmpv playback on Windows**, including HEVC/H.265 recordings.
-- Hardware-accelerated decoding when supported by the system.
-- Play/pause, seeking, volume and mute, and playback speeds from **0.25× to 3×**.
-- Video-only fullscreen mode with mouse-over controls.
-- Switch recordings without restarting the application.
+- Trim recordings with a visual, frame-based timeline, draggable in/out points, precise time inputs, and frame stepping.
+- Preview a selected segment before exporting.
+- Export a **new H.264 MP4** using CPU encoding or **NVIDIA NVENC** when available.
+- Preserve supported audio streams as separate AAC tracks.
+- Queue exports in the background, monitor progress, cancel jobs, and continue browsing or editing other clips.
+- Validate completed exports before saving them. **Original recordings are never overwritten.**
 
-### Recording details
+**Current limitations:** The editor supports a single continuous trim and 8-bit SDR video. Independent audio-track mixing, HEVC export, replacing originals with backups, and saved editing projects are not yet implemented. The export queue lasts for the current application session.
 
-- Inspect container, codec, resolution, frame rate, duration, and other available video properties using FFprobe.
-- View metadata for individual audio streams, including recordings with multiple tracks.
-- Use a resizable, collapsible inspector beside the player.
+## Installation & Setup
 
-**Formats:** MP4 is the primary format. M4V, MOV, MKV, and WebM can also be selected, although actual playback depends on the codecs and playback backend. HEVC playback with D3D11VA hardware decoding has been verified on Windows with an NVIDIA RTX 3080; other hardware configurations remain unverified.
-
-> **Current limitation:** Audio tracks can be inspected, but independent track selection and mixing are not implemented. Klipper is not yet a clip editor.
-
-## Getting started
-
-Klipper currently targets **Windows 10 and 11 (x64)** and is run from source. A ready-to-download portable release is not available yet. Linux support has not been validated and currently uses HTML video rather than libmpv.
+Klipper currently runs from source on **Windows 10/11 (x64)**. Linux support has not been fully validated.
 
 ### Prerequisites
 
-- **Node.js:** 22.22.2+ (Node 22) or 24.15+ (Node 24), with npm.
-- **Rust:** current stable Windows MSVC toolchain; the declared minimum is Rust 1.90.
-- **Visual Studio 2022 C++ Build Tools:** _Desktop development with C++_ and the Windows SDK.
-- **Microsoft Edge WebView2 Runtime.**
-- **FFmpeg and FFprobe** available on `PATH` for thumbnail extraction and recording inspection.
-- **libmpv for Windows x64**, installed locally as described below.
+- **Node.js** 22.22.2+ or 24.15+, with npm.
+- **Rust** stable MSVC toolchain (declared minimum: 1.90).
+- **Visual Studio 2022 C++ Build Tools** and Windows SDK.
+- **Microsoft Edge WebView2 Runtime**.
+- **FFmpeg and FFprobe** available on `PATH`.
+- The Windows x64 **libmpv** build pinned in [`scripts/libmpv.json`](scripts/libmpv.json).
 
-See [Tauri's Windows prerequisites](https://v2.tauri.app/start/prerequisites/#windows) for the development environment.
+See [Tauri's Windows prerequisites](https://v2.tauri.app/start/prerequisites/#windows) for help setting up the development environment.
 
-### Run from source
+### Run from Source
 
-1. Clone the repository and open a terminal in its root directory.
-2. Install JavaScript dependencies:
+1. Clone the repository and install its dependencies:
 
-    ```powershell
-    npm ci
-    ```
+   ```powershell
+   git clone https://github.com/miskamero/Klipper.git
+   cd Klipper
+   npm ci
+   ```
 
-3. Download and extract the Windows x64 libmpv archive identified in [`scripts/libmpv.json`](scripts/libmpv.json). Verify the archive against the SHA-256 listed there.
-4. Register the extracted DLL with Klipper:
+2. Download and extract the libmpv archive identified in [`scripts/libmpv.json`](scripts/libmpv.json). Verify the archive's SHA-256 checksum against the manifest, then register the DLL:
 
-    ```powershell
-    npm run native:setup -- "C:\path\to\extracted\libmpv-2.dll"
-    npm run native:check
-    ```
+   ```powershell
+   npm run native:setup -- "C:\path\to\libmpv-2.dll"
+   npm run native:check
+   ```
 
-5. Launch Klipper:
+3. Start Klipper:
 
-    ```powershell
-    npm run desktop
-    ```
+   ```powershell
+   npm run desktop
+   ```
 
-The setup command verifies the DLL checksum and copies it into the ignored `native-deps/windows-x64/` directory, where development and debug builds load it. It refuses to overwrite an existing DLL with a different checksum. It does not install anything system-wide or download binaries automatically. The pinned libmpv build also requires a Vulkan loader (`vulkan-1.dll`), available with the tested NVIDIA driver.
+The setup script checks the DLL and copies it into the ignored `native-deps/windows-x64/` directory. It does not install libmpv system-wide. The pinned build also needs `vulkan-1.dll`, normally provided by a compatible graphics driver.
 
-If Rust linking fails because Windows SDK or MSVC libraries cannot be found, use the **x64 Developer PowerShell for Visual Studio**.
+If Rust linking fails, try the **x64 Developer PowerShell for Visual Studio**.
 
-## Using Klipper
+## How to Use
 
-1. In **Library**, choose **Add folder** to index a recording folder, then open a recording from the list. Alternatively, use **Open recording** to play a single file.
-2. Watch the recording in the player and use the transport controls to seek, pause, adjust volume, or change playback speed.
-3. Expand the inspector to examine video and audio-stream information.
-4. Use the player's fullscreen button for video-only fullscreen. Move the mouse to reveal the controls; press **Escape** to return.
+1. **Build your library:** Select **Add folder** to index local recordings, or use **Open recording** to play a file just once.
+2. **Bring in Medal data:** Choose **Import from Medal**, select a supported catalog or database, review the matches, and confirm. Klipper does not automatically add unindexed videos without approval.
+3. **Find and watch clips:** Browse Collections, search or filter your recordings, and open a clip. Returning from playback preserves your place in the library.
+4. **Trim and export:** Select **Edit video**, adjust the timeline, and export a new video. The background queue lets you continue using Klipper while it finishes.
 
-Library starts on **Collections**, with tiles for All recordings, imported providers and selected folders. Folder views show all indexed recordings in the selected folder and its subfolders. Search and filters, including game names and Unknown game, apply to that collection. Use the optional sidebar for more precise folder selection. Breadcrumbs and **← Collections** navigate back, and the optional sidebar provides the same shortcuts. Returning from playback restores your collection, search, filters and browsing position. **Manage library** contains folder rescan/removal and **Reset Library**, which requires confirmation and forgets library records and Klipper-managed previews without touching source files or standalone Player selections. The database uses the platform application-data location for org.klipper.desktop (on Windows, %APPDATA%\org.klipper.desktop\library.sqlite3).
-
-Choose **Import from Medal** in Library, select a local `clips.json` or supported Medal SQLite `.db`, review the proposed associations, then confirm. The default enriches existing recordings only; adding new catalog-referenced videos requires separate approval. Matching uses exact normalized paths or verified file identity. Ambiguous matches remain unresolved, and edits do not lend their titles to originals. SQLite sources are read through a consistent private snapshot with size/time limits; unsupported schemas are rejected. No source is reread automatically, and remote images are never downloaded.
-
-Imported metadata remains separate from FFprobe properties. Date sorting prefers Medal's creation time when known, otherwise file modification time; local and remote creation times are retained separately and are not verified capture timestamps. JSON and SQLite claims remain inspectable. The first confirmed meaningful display value is retained when sources disagree; importing another source never silently replaces it with a different or empty claim. An owning source can update an unambiguous value. Local provider thumbnails are copied into the bounded preview cache after confirmation, with on-demand FFmpeg frame extraction as fallback. Cached previews survive source loss until evicted; the original image is needed to restore an evicted provider preview.
-
-Klipper never scans drives or recording folders without selection. Opening an indexed recording revalidates it against a selected folder or an exact-file grant confirmed during import, then grants the same single-file playback access as the native file picker. Library playback stays within Library; standalone Player selections remain separate and are not added to the database.
+Klipper runs locally without accounts, telemetry, or cloud uploads. It only indexes folders you explicitly choose. **Manage library** lets you rescan, remove folders, or reset Klipper's library without deleting the source files.
 
 ## Development
 
-Klipper uses **Tauri v2, Rust, React, TypeScript, and SCSS Modules**. The native Windows player is implemented in `src-tauri/src/native_player/`, with its React components in `src/components/native/`.
-
-`npm run dev` serves a browser preview; native file selection and window controls require `npm run desktop`. Frontend formatting uses Prettier with actual tabs at width four; Rust uses rustfmt.
-
-Useful checks:
+Klipper uses **Tauri v2, Rust, React, TypeScript, and SCSS Modules**. Native playback is implemented in `src-tauri/src/native_player/`, with its frontend components in `src/components/native/`.
 
 ```powershell
 npm run format:check
@@ -108,23 +96,11 @@ npm run lint
 npm run typecheck
 npm test
 npm run build
-cargo fmt --manifest-path src-tauri/Cargo.toml --check
-cargo check --manifest-path src-tauri/Cargo.toml
 cargo test --manifest-path src-tauri/Cargo.toml
 ```
 
-To compile the desktop executable without creating an installer:
-
-```powershell
-npm run desktop:build
-```
-
-The executable is written to `src-tauri/target/release/klipper.exe`. Copy the verified `native-deps/windows-x64/libmpv-2.dll` beside that executable before running it. The build does not copy the DLL automatically. Recording inspection still needs FFprobe on `PATH`; WebView2 remains an OS prerequisite.
-
-Thumbnail extraction also needs FFmpeg. Portable packaging should include vetted FFmpeg and FFprobe helpers under resources/bin, with any DLLs required by the chosen builds and their corresponding license/source materials. The development build falls back to PATH; no binaries are downloaded at runtime.
-
-**A successful build is not yet a complete portable distribution**: dependency bundling, clean-machine validation, and the necessary third-party license and source materials are still pending. End users of a future packaged release will not need Node.js, Rust, or Python.
+To compile a desktop executable, run `npm run desktop:build`. The resulting executable is **not yet a portable distribution**: libmpv and the FFmpeg/FFprobe tools still need to be provided, along with the applicable third-party licensing materials. The release executable requires `libmpv-2.dll` beside it.
 
 ## License
 
-Klipper's application code is licensed under **[GPL-3.0-only](LICENSE)**. Ignored legacy utilities and private data are excluded from that application license scope. Native media libraries have their own licenses and redistribution requirements; their binaries are not included in this repository.
+Klipper's application code is licensed under **[GPL-3.0-only](LICENSE)**. Third-party media libraries and tools retain their respective licenses and redistribution requirements.
