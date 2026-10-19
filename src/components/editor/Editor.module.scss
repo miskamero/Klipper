@@ -1,0 +1,196 @@
+@use "../../styles/tokens" as t;
+
+.editor {
+	flex-shrink: 0;
+	padding: 16px 24px;
+	background: t.$panel;
+	border-top: 1px solid t.$border;
+	max-height: 48dvh;
+	overflow: auto;
+	font-size: 13px;
+	p {
+		margin: 8px 0 0;
+		line-height: 1.5;
+		color: t.$text-secondary;
+	}
+	p[role="alert"] {
+		color: t.$text-primary;
+		border-left: 2px solid t.$warning;
+		padding-left: 8px;
+	}
+	button {
+		min-height: 34px;
+		white-space: nowrap;
+	}
+}
+.timeline {
+	padding: 0 8px 12px;
+}
+.ruler {
+	display: flex;
+	justify-content: space-between;
+	margin-bottom: 8px;
+	color: t.$text-secondary;
+	font-size: 12px;
+	font-variant-numeric: tabular-nums;
+}
+.track {
+	position: relative;
+	height: 72px;
+	touch-action: none;
+	user-select: none;
+}
+.storyboard {
+	display: grid;
+	grid-template-columns: repeat(8, minmax(0, 1fr));
+	height: 100%;
+	background: t.$surface-elevated;
+	overflow: hidden;
+	border-radius: 4px;
+	> div {
+		display: grid;
+		place-items: center;
+		min-width: 0;
+		overflow: hidden;
+		border-right: 1px solid t.$border;
+	}
+	img {
+		width: 100%;
+		height: 100%;
+		object-fit: contain;
+		background: t.$video-stage;
+	}
+}
+.selection {
+	position: absolute;
+	inset-block: 0;
+	border: 2px solid t.$accent;
+	background: rgba(t.$accent, 0.08);
+	pointer-events: none;
+}
+.handle {
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	transform: translateX(-50%);
+	width: 20px;
+	padding: 0;
+	z-index: 2;
+	cursor: ew-resize;
+	color: t.$accent-text;
+	background: t.$accent;
+	border-radius: 4px;
+	touch-action: none;
+}
+.playhead {
+	position: absolute;
+	top: -4px;
+	bottom: -4px;
+	width: 2px;
+	background: t.$text-primary;
+	pointer-events: none;
+}
+.playheadSeek {
+	position: absolute;
+	inset: 0;
+	opacity: 0;
+	width: 100%;
+	height: 100%;
+	margin: 0;
+	cursor: crosshair;
+	&:focus-visible {
+		opacity: 1;
+	}
+}
+.rangeControls,
+.exportControls {
+	> label {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		select {
+			max-width: 220px;
+			min-height: 34px;
+		}
+	}
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex-wrap: wrap;
+}
+.rangeControls {
+	margin: 8px 0 12px;
+	label {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+	input {
+		width: 128px;
+		padding: 6px 8px;
+		font-size: 13px;
+		font-variant-numeric: tabular-nums;
+	}
+}
+.result {
+	margin: 0 auto 0 8px;
+	color: t.$text-secondary;
+	strong {
+		color: t.$text-primary;
+		font-variant-numeric: tabular-nums;
+	}
+}
+.exportControls {
+	border-top: 1px solid t.$border;
+	padding-top: 12px;
+	> div {
+		margin-right: auto;
+		p {
+			margin-top: 4px;
+		}
+	}
+}
+.primary {
+	background: t.$accent;
+	color: t.$accent-text;
+}
+.path {
+	overflow-wrap: anywhere;
+	user-select: text;
+}
+.progress {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	margin-top: 12px;
+	flex-wrap: wrap;
+	progress {
+		accent-color: t.$accent;
+		flex: 1;
+		min-width: 100px;
+	}
+}
+.completion {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	margin-top: 12px;
+	span {
+		overflow-wrap: anywhere;
+		min-width: 0;
+	}
+}
+.note {
+	font-size: 12px;
+}
+@media (max-width: 760px) {
+	.editor {
+		padding: 12px;
+	}
+	.ruler span:nth-child(even) {
+		display: none;
+	}
+	.track {
+		height: 56px;
+	}
+}

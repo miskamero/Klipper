@@ -12,6 +12,8 @@ export default function TitleBar({
 	workspace = "player",
 	onWorkspaceChange,
 	showInspector = workspace === "player",
+	exportSummary,
+	onShowExports,
 }: {
 	selecting: boolean;
 	hasRecording: boolean;
@@ -21,6 +23,8 @@ export default function TitleBar({
 	workspace?: "library" | "player";
 	onWorkspaceChange?: (workspace: "library" | "player") => void;
 	showInspector?: boolean;
+	exportSummary?: string;
+	onShowExports?: () => void;
 }) {
 	const [nativeWindow] = useState(() => (isTauri() ? getCurrentWindow() : null));
 	const [maximized, setMaximized] = useState(false);
@@ -133,6 +137,15 @@ export default function TitleBar({
 					</nav>
 				)}
 				<div className={styles.actions}>
+					{exportSummary && (
+						<button
+							onClick={onShowExports}
+							aria-label="Show exports"
+							title="View background exports in Library"
+						>
+							Exports · {exportSummary}
+						</button>
+					)}
 					<button
 						onClick={onOpen}
 						disabled={selecting}

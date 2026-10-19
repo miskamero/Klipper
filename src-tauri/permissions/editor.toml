@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "editor"
+description = "Edit the active authorized recording and export only to a native Save As destination. No arbitrary paths or commands."
+commands.allow = ["editor_begin", "editor_close", "editor_range", "editor_frame", "editor_destination", "editor_export", "export_encoders", "exports_status", "exports_cancel", "exports_dismiss", "exports_close", "exports_open"]

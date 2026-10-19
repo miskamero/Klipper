@@ -154,7 +154,6 @@ impl RecordingState {
         self.analysis.supersede();
         Ok(recording)
     }
-    #[cfg(windows)]
     pub(crate) fn with_selected<T>(
         &self,
         id: u64,

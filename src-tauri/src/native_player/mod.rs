@@ -32,6 +32,9 @@ pub enum Control {
     Snapshot,
     Stop,
     Fullscreen(bool),
+    PreviewRange([f64; 2]),
+    ClearPreview,
+    FrameStep(bool),
 }
 impl Control {
     fn allowed_from_overlay(&self) -> bool {
@@ -48,6 +51,15 @@ impl Control {
     }
     fn validate(&self) -> Result<(), String> {
         match self {
+            Self::PreviewRange([start, end])
+                if !start.is_finite()
+                    || !end.is_finite()
+                    || *start < 0.0
+                    || end <= start
+                    || *end > 604800.0 =>
+            {
+                Err("Invalid preview range".into())
+            }
             Self::Seek(v) if !v.is_finite() || *v < 0.0 || *v > 604800.0 => {
                 Err("Invalid seek".into())
             }
@@ -76,6 +88,7 @@ pub struct Snapshot {
     error: String,
     fullscreen: bool,
     pointer: Option<fullscreen::Pointer>,
+    seeking: bool,
 }
 struct Request {
     id: u64,
@@ -98,6 +111,10 @@ pub struct NativePlayer {
 
 // A native surface failure is visible in the UI instead of aborting application startup.
 pub struct NativeState(pub Result<NativePlayer, String>);
+fn restart_preview([start, end]: [f64; 2], position: Option<f64>, eof: bool) -> bool {
+    eof || position
+        .is_none_or(|position| !position.is_finite() || position < start || position >= end)
+}
 impl NativeState {
     pub fn player(&self) -> Result<&NativePlayer, String> {
         self.0.as_ref().map_err(Clone::clone)
@@ -146,6 +163,7 @@ impl NativePlayer {
             let mut loaded = false;
             let mut started = false;
             let mut load_requested = false;
+            let mut preview_range: Option<[f64; 2]> = None;
             while !stop.load(Ordering::Acquire) {
                 let Ok(request) = receiver.recv_timeout(Duration::from_millis(50)) else {
                     continue;
@@ -168,6 +186,8 @@ impl NativePlayer {
                                 || matches!(request.control, Control::Reload)
                             {
                                 current = request.id;
+                                preview_range = None;
+                                p.send(&["set", "end", "none"])?;
                                 error.clear();
                                 loaded = false;
                                 started = false;
@@ -198,10 +218,47 @@ impl NativePlayer {
                         }
                         let p = player.as_ref().ok_or("Native player is not loaded")?;
                         match request.control {
+                            Control::PreviewRange(range) => {
+                                preview_range = Some(range);
+                                p.send(&["set", "end", "none"])?;
+                            }
+                            Control::ClearPreview => {
+                                preview_range = None;
+                                p.send(&["set", "end", "none"])?;
+                            }
+                            Control::FrameStep(forward) => {
+                                p.send(&["set", "end", "none"])?;
+                                p.send(&[if forward {
+                                    "frame-step"
+                                } else {
+                                    "frame-back-step"
+                                }])?;
+                            }
                             Control::Pause(value) => {
+                                if !value {
+                                    if let Some([start, end]) = preview_range {
+                                        let position =
+                                            p.get("time-pos").and_then(|s| s.parse::<f64>().ok());
+                                        let eof = p.get("eof-reached").as_deref() == Some("yes");
+                                        // Native end bounds both audio/video. Every Play entry point,
+                                        // including fullscreen controls, resumes the same selection.
+                                        p.send(&["set", "end", &end.to_string()])?;
+                                        if restart_preview([start, end], position, eof) {
+                                            p.send(&[
+                                                "seek",
+                                                &start.to_string(),
+                                                "absolute+exact",
+                                            ])?;
+                                        }
+                                    }
+                                }
                                 p.send(&["set", "pause", if value { "yes" } else { "no" }])?
                             }
                             Control::Seek(value) => {
+                                if preview_range.is_some() {
+                                    p.send(&["set", "pause", "yes"])?;
+                                }
+                                p.send(&["set", "end", "none"])?;
                                 p.send(&["seek", &value.to_string(), "absolute+exact"])?
                             }
                             Control::Speed(value) => {
@@ -214,6 +271,8 @@ impl NativePlayer {
                                 p.send(&["set", "mute", if value { "yes" } else { "no" }])?
                             }
                             Control::Stop => {
+                                preview_range = None;
+                                p.send(&["set", "end", "none"])?;
                                 p.send(&["stop"])?;
                                 loaded = false;
                                 load_requested = false;
@@ -269,6 +328,7 @@ impl NativePlayer {
                             error: error.clone(),
                             fullscreen: false,
                             pointer: None,
+                            seeking: p.get("seeking").as_deref() == Some("yes"),
                         })
                     }
                 })();
@@ -516,6 +576,17 @@ pub async fn mpv_surface(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn editor_play_restarts_at_out_or_eof_and_resumes_inside_the_selection() {
+        assert!(restart_preview([1.0, 3.0], Some(3.0), false));
+        assert!(restart_preview([1.0, 3.0], Some(2.99998), true));
+        assert!(restart_preview([1.0, 3.0], Some(0.5), false));
+        assert!(restart_preview([1.0, 3.0], None, false));
+        assert!(!restart_preview([1.0, 3.0], Some(1.0), false));
+        assert!(!restart_preview([1.0, 3.0], Some(2.0), false));
+        assert!(Control::PreviewRange([3.0, 1.0]).validate().is_err());
+        assert!(!Control::PreviewRange([1.0, 3.0]).allowed_from_overlay());
+    }
     #[test]
     fn controls_are_bounded() {
         assert!(Control::Volume(101.0).validate().is_err());

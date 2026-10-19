@@ -28,7 +28,7 @@ impl Cache {
     pub fn open(directory: &Path) -> Result<Self, String> {
         Self::with_limits(directory, MAX_BYTES, MAX_ENTRIES)
     }
-    pub(super) fn with_limits(directory: &Path, bytes: i64, entries: i64) -> Result<Self, String> {
+    pub(crate) fn with_limits(directory: &Path, bytes: i64, entries: i64) -> Result<Self, String> {
         std::fs::create_dir_all(directory).map_err(|e| e.to_string())?;
         let db =
             Connection::open(directory.join("previews-v1.sqlite3")).map_err(|e| e.to_string())?;

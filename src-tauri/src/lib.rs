@@ -1,6 +1,7 @@
 mod analysis;
 mod commands;
 mod config;
+mod editor;
 mod library;
 pub mod media;
 mod media_process;
@@ -14,8 +15,13 @@ pub fn run() {
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(commands::RecordingState::default())
+        .manage(editor::EditorState::default())
+        .manage(editor::queue::ExportState::default())
         .setup(|app| {
             app.manage(library::LibraryState(library::initialize(app.handle())));
+            app.state::<editor::queue::ExportState>()
+                .0
+                .connect(app.handle().clone());
             #[cfg(windows)]
             {
                 let window = app
@@ -30,11 +36,36 @@ pub fn run() {
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
+                if window.state::<editor::EditorState>().0.has_session()
+                    || window
+                        .state::<editor::queue::ExportState>()
+                        .0
+                        .has_unfinished()
+                {
+                    use tauri::Emitter;
+                    let _ =
+                        window
+                            .app_handle()
+                            .emit_to("main", "editor-window-close-requested", ());
+                    return;
+                }
                 window.app_handle().exit(0);
             }
         });
     #[cfg(not(windows))]
     let builder = builder.invoke_handler(tauri::generate_handler![
+        editor::editor_begin,
+        editor::editor_close,
+        editor::editor_range,
+        editor::editor_frame,
+        editor::editor_destination,
+        editor::editor_export,
+        editor::queue::export_encoders,
+        editor::queue::exports_status,
+        editor::queue::exports_cancel,
+        editor::queue::exports_dismiss,
+        editor::queue::exports_close,
+        editor::queue::exports_open,
         commands::select_recording,
         commands::analyze_recording,
         commands::activate_recording,
@@ -58,6 +89,18 @@ pub fn run() {
     ]);
     #[cfg(windows)]
     let builder = builder.invoke_handler(tauri::generate_handler![
+        editor::editor_begin,
+        editor::editor_close,
+        editor::editor_range,
+        editor::editor_frame,
+        editor::editor_destination,
+        editor::editor_export,
+        editor::queue::export_encoders,
+        editor::queue::exports_status,
+        editor::queue::exports_cancel,
+        editor::queue::exports_dismiss,
+        editor::queue::exports_close,
+        editor::queue::exports_open,
         commands::select_recording,
         commands::analyze_recording,
         commands::activate_recording,
@@ -89,11 +132,17 @@ pub fn run() {
             if let tauri::RunEvent::ExitRequested { api, code, .. } = event {
                 let analysis = app.state::<commands::RecordingState>().analysis.clone();
                 analysis.stop();
+                let editor = app.state::<editor::EditorState>().0.clone();
+                editor.stop();
+                let exports = app.state::<editor::queue::ExportState>().0.clone();
+                exports.stop();
                 let library = app.state::<library::LibraryState>().get().ok();
                 if let Some(library) = &library {
                     library.stop(&analysis);
                 }
-                let mut needs_cleanup = !analysis.is_idle()
+                let mut needs_cleanup = !exports.is_idle()
+                    || !editor.is_idle()
+                    || !analysis.is_idle()
                     || library
                         .as_ref()
                         .is_some_and(|l| !l.is_idle() || !l.thumbnails.is_idle());
@@ -112,6 +161,8 @@ pub fn run() {
                     exiting = true;
                     let app = app.clone();
                     tauri::async_runtime::spawn(async move {
+                        exports.shutdown().await;
+                        editor.shutdown().await;
                         #[cfg(windows)]
                         {
                             let cleanup_app = app.clone();

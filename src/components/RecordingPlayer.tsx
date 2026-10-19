@@ -4,6 +4,8 @@ import { errorMessage, playbackUrl, type MediaInfo, type Recording } from "../se
 import Player from "./Player";
 import styles from "./Player.module.scss";
 import type { PlaybackPosition } from "../services/playback";
+import type { RefObject } from "react";
+import type { EditorBridge } from "../services/editor";
 
 const NativePlayer = lazy(() => import("./native/NativePlayer"));
 
@@ -14,6 +16,7 @@ export default function RecordingPlayer({
 	onFullscreenChange,
 	initialPosition,
 	onPosition,
+	editorBridge,
 }: {
 	recording: Recording;
 	info: MediaInfo | null;
@@ -21,6 +24,7 @@ export default function RecordingPlayer({
 	onFullscreenChange?: (value: boolean) => void;
 	initialPosition?: PlaybackPosition;
 	onPosition?: (value: PlaybackPosition) => void;
+	editorBridge?: RefObject<EditorBridge>;
 }) {
 	const [backend, setBackend] = useState<PlaybackBackend | null>(null);
 	const [attempt, setAttempt] = useState(0);
@@ -50,6 +54,7 @@ export default function RecordingPlayer({
 			<Suspense fallback={<p role="status">Loading native player…</p>}>
 				<NativePlayer
 					id={recording.id}
+					editorBridge={editorBridge}
 					selecting={selecting}
 					onFullscreenChange={onFullscreenChange}
 					initialPosition={initialPosition}

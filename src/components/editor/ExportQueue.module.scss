@@ -1,0 +1,80 @@
+@use "../../styles/tokens" as t;
+.queue {
+	position: fixed;
+	left: 20px;
+	bottom: 20px;
+	width: min(380px, calc(100vw - 40px));
+	z-index: 10;
+	background: t.$panel;
+	border: 1px solid t.$border;
+	border-radius: 6px;
+	box-shadow: 0 4px 12px rgba(t.$video-stage, 0.3);
+	font-size: 13px;
+	button {
+		min-height: 32px;
+	}
+	p {
+		margin: 8px 0;
+		line-height: 1.4;
+		overflow-wrap: anywhere;
+	}
+}
+.summary {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: 100%;
+	padding: 8px 12px;
+	border: 0;
+	background: transparent;
+	span {
+		color: t.$text-secondary;
+	}
+	span:last-child {
+		margin-left: auto;
+	}
+}
+.jobs {
+	max-height: min(480px, 60dvh);
+	overflow: auto;
+	padding: 0 12px 12px;
+	border-top: 1px solid t.$border;
+}
+.hint {
+	color: t.$text-secondary;
+	font-size: 12px;
+}
+.job {
+	padding: 12px 0;
+	border-bottom: 1px solid t.$border;
+	> strong {
+		display: block;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	progress {
+		width: 100%;
+		accent-color: t.$accent;
+		height: 6px;
+	}
+	&:last-child {
+		border: 0;
+		padding-bottom: 0;
+	}
+}
+.status {
+	display: flex;
+	gap: 8px;
+	justify-content: space-between;
+	color: t.$text-secondary;
+	margin: 8px 0;
+	font-variant-numeric: tabular-nums;
+}
+.actions {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 8px;
+	margin-top: 8px;
+}

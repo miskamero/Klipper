@@ -6,6 +6,8 @@ import type { Control, Snapshot } from "./nativePlayback";
 import styles from "../Player.module.scss";
 import useVideoFullscreen from "./useVideoFullscreen";
 import type { PlaybackPosition } from "../../services/playback";
+import type { RefObject } from "react";
+import type { EditorBridge } from "../../services/editor";
 
 // The native worker owns playback; this component coordinates controls and surface geometry.
 export default function NativePlayer({
@@ -14,12 +16,14 @@ export default function NativePlayer({
 	onFullscreenChange,
 	initialPosition,
 	onPosition,
+	editorBridge,
 }: {
 	id: number;
 	selecting: boolean;
 	onFullscreenChange?: (value: boolean) => void;
 	initialPosition?: PlaybackPosition;
 	onPosition?: (value: PlaybackPosition) => void;
+	editorBridge?: RefObject<EditorBridge>;
 }) {
 	const stage = useRef<HTMLDivElement>(null);
 	const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
@@ -53,9 +57,11 @@ export default function NativePlayer({
 					control: { kind: "fullscreen", value },
 				});
 				if (alive.current && result.id === id) setSnapshot(result);
+				return result.id === id && result.fullscreen === value;
 			} catch (reason) {
 				if (alive.current)
 					setControlError(`Fullscreen could not change: ${String(reason)}`);
+				return false;
 			}
 		},
 		[id],
@@ -89,6 +95,16 @@ export default function NativePlayer({
 	cursorHiddenRef.current = cursorHidden;
 	const controlsVisible = useRef(true);
 	controlsVisible.current = presentation.controlsVisible;
+	useEffect(() => {
+		if (!editorBridge) return;
+		const bridge = editorBridge.current;
+		bridge.command = command;
+		bridge.fullscreen = requestFullscreen;
+		return () => {
+			delete bridge.command;
+			delete bridge.fullscreen;
+		};
+	}, [editorBridge, command, requestFullscreen]);
 
 	useEffect(() => {
 		alive.current = true;
@@ -109,6 +125,8 @@ export default function NativePlayer({
 				});
 				if (disposed) return;
 				if (result.id === id) {
+					if (editorBridge) editorBridge.current.snapshot = result;
+					editorBridge?.current.report?.(result);
 					if (restore.current && result.duration > 0) {
 						const saved = restore.current;
 						restore.current = undefined;
@@ -163,7 +181,7 @@ export default function NativePlayer({
 					void invoke("mpv_control", { id, control: { kind: "stop" } }).catch(() => {});
 			});
 		};
-	}, [id, attempt, initialPosition]);
+	}, [id, attempt, initialPosition, editorBridge]);
 
 	useEffect(() => {
 		let disposed = false;

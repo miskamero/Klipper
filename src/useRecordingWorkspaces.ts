@@ -120,7 +120,7 @@ export default function useRecordingWorkspaces() {
 			} else setReady(true);
 		});
 	}
-	async function open(fileId?: number) {
+	async function open(fileId?: number, authorized?: Recording) {
 		if (!mounted.current || picking.current) return;
 		picking.current = true;
 		setSelecting(true);
@@ -131,7 +131,7 @@ export default function useRecordingWorkspaces() {
 		let metadata: ImportedMetadata[] | undefined;
 		let displayTitle: string | null | undefined;
 		try {
-			if (fileId === undefined) recording = await selectRecording();
+			if (fileId === undefined) recording = authorized ?? (await selectRecording());
 			else {
 				const result = await openLibraryRecording(fileId);
 				recording = result.recording;
@@ -204,6 +204,7 @@ export default function useRecordingWorkspaces() {
 		view,
 		navigate,
 		open,
+		openExport: (recording: Recording) => open(undefined, recording),
 		selecting,
 		ready,
 		error,

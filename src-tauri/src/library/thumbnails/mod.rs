@@ -1,4 +1,4 @@
-mod cache;
+pub(crate) mod cache;
 use super::{files, Library};
 use crate::{analysis::Analysis, config, media_process};
 use std::{

@@ -4,6 +4,7 @@
 	"description": "Main window: selected read-only recordings and explicit native window controls.",
 	"windows": ["main"],
 	"permissions": [
+		"editor",
 		"library",
 		"medal-import",
 		"recording-select",
