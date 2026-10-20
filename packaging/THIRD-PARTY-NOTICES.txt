@@ -1,0 +1,108 @@
+KLIPPER WINDOWS DISTRIBUTION - THIRD-PARTY NOTICES AND SOURCE MATERIALS
+
+STATUS: INTERNAL VALIDATION ONLY. PUBLIC REDISTRIBUTION IS NOT APPROVED.
+The media dependency sources and installer build correspondence listed below
+are incomplete. Bundled evidence is not complete Corresponding Source, a written
+source offer, or a declaration of license compliance.
+
+Klipper application code: GPL-3.0-only. See LICENSE.txt and the matching source
+and packaging scripts in sources/application-source.zip. Third-party components
+retain their own terms; they are not relicensed wholesale.
+Legacy tools, private data, recordings, exports and original-tool snapshots are
+excluded from the application distribution and this application license grant.
+They retain their own ownership and licensing status.
+
+MATERIALS AND INTEGRITY
+
+dependency-provenance.json pins the media binaries. compliance/inventory.json
+lists collected dependency versions, license expressions, archive hashes,
+upstream references and unresolved obligations. Verbatim notices/license texts
+are in compliance/licenses/; original source archives are in compliance/sources/.
+compliance/manifest.json records their SHA-256 hashes and binds the collection
+to the binary pins and package lockfiles. Both installer and ZIP include these
+same materials. Copyright headers remain intact in the supplied source archives.
+
+LIBMPV: shinchiro 20261015, mpv 492bae0768f5e826991bf9fb222fa303371e8498.
+https://github.com/shinchiro/mpv-winbuild-cmake/releases/tag/20261015
+https://github.com/mpv-player/mpv
+mpv derives from MPlayer/mplayer2 and is copyright its contributors. Its default
+license is GPL-2.0-or-later, with other file licenses documented in Copyright.
+This build includes GPL dependencies and FFmpeg with GPL/version3 enabled; it
+must not be described as LGPL-only. See compliance/licenses/mpv/ and its source.
+Builder commit 1f8d2e76255abc48f0456d9be99b4cab9c6566e6 contains recipes and
+patches but fetches some dependencies without fixed revisions. Required before
+public distribution: exact linked dependency revisions, corresponding sources,
+notices, patches, build configuration and toolchain inputs. The collected builder
+archive and top-level mpv source alone do not meet that requirement.
+
+FFMPEG/FFPROBE: Gyan 9.0.2 essentials static x64 build, GPLv3 or later.
+Copyright (c) 2000-2026 the FFmpeg developers and included library authors.
+https://www.gyan.dev/ffmpeg/builds/
+See licenses/FFmpeg-GPL.txt, FFmpeg-buildconf.txt and FFmpeg-version.txt.
+The verified FFmpeg commit is 946fcce07b6dcd0331c8cc609192aeff5e1924f8.
+The build enables GPL/version3 and does not enable nonfree. Its FFmpeg code can
+use GPLv3 alongside Klipper's GPL-3.0-only code, subject to the linked components'
+terms. In particular it enables x264, x265, Xvid, Rubber Band and vid.stab, as
+well as many LGPL/permissive libraries. A full dependency review is still needed.
+Required: exact static dependency sources and notices, patches, compiler/build
+configuration and scripts for these binaries. Embedded configuration and the
+collected top-level FFmpeg source do not identify all those sources.
+
+VULKAN LOADER: Khronos/LunarG 1.4.363.0, MIT and Apache-2.0 components.
+The unaltered runtime notice is licenses/VulkanRT-License.txt, including Khronos,
+LunarG, Valve, Dave Gamble (cJSON) and Joseph Werle copyright notices. Full
+Apache-2.0 terms are additionally in compliance/licenses/vulkan-loader/.
+Upstream tag v1.4.363 is 9e9518d2cf00054a220ae1a40f4406804b420ef5; its source
+is provided as provenance, not a claim of reproducing LunarG's binary.
+This is an app-local loader, not a graphics driver. A supported GPU driver is
+still required. No Vulkan system-wide installation is performed by Klipper.
+
+RUST AND FRONTEND COMPONENTS
+
+The inventory covers locked Windows runtime and build crates, conservatively
+including build-only dependencies. Exact crates.io source archives are verified
+against Cargo.lock, and installed source files against those original archives.
+Separate notice/license files and source copyright headers are preserved.
+Bundled SQLite source and its public-domain notices are in libsqlite3-sys.
+Rust standard-library copyright/license materials are also included.
+
+React, React DOM, scheduler and Tauri API package sources/notices are supplied.
+Vite and Rolldown materials are included conservatively for generated helpers;
+their build tools are not runtime requirements. MIT, Apache, BSD, ISC, Zlib,
+Unicode and public-domain grants retain their individual terms and notices.
+MPL-2.0 files, including cssparser, selectors, dtoa-short and option-ext, remain
+available in their unmodified crate sources under MPL-2.0. Its section 3.3
+secondary-license provision applies to eligible files when combined under GPL;
+retain the MPL notices and do not assume eligibility for differently marked files.
+
+NSIS INSTALLER
+
+NSIS 3.11: Copyright (C) 1999-2025 Contributors. See the full unaltered COPYING
+and BINARY-COPYING.txt in compliance/licenses/nsis/. Core/plugins use zlib/libpng
+terms, with exceptions documented there. The chosen LZMA module uses CPL-1.0
+with Igor Pavlov and Amir Szekely's exception allowing linking without applying
+CPL to the linked application. Module obligations remain. Upstream v311 source
+is supplied; correspondence to Tauri's supplied stub still needs verification.
+nsis_tauri_utils 0.5.3: Copyright Tauri Programme within The Commons Conservancy,
+MIT OR Apache-2.0. License texts and release sources/build scripts are supplied;
+no dependency Cargo.lock was included upstream. Exact binary build inputs remain
+unverified provenance; MIT does not require source/lockfile disclosure or
+byte-identical builds. Applicable notices and license terms remain required.
+Installer input hashes are an internal integrity safeguard.
+
+WINDOWS PREREQUISITES
+
+Windows system DLLs and graphics drivers are not redistributed. The ZIP needs
+WebView2 already installed. The installer may download Microsoft's WebView2
+bootstrapper during installation; this is a separately licensed prerequisite,
+not an included Klipper source component. No developer toolchains are shipped.
+
+PUBLIC RELEASE REQUIREMENTS
+
+The selected approach accompanies binaries with applicable source/build materials
+rather than relying on generic links or an unfulfilled written offer. Arrange
+source availability for any eventual public download consistently with each
+applicable license. Resolve packaging/compliance.json's blockers and complete
+the combined-work review before approving distribution. File presence alone
+does not establish compliance. Internal packages are not public alpha releases.
+No legal opinion or public-release approval is implied.

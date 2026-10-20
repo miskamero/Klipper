@@ -1,0 +1,29 @@
+{
+	"platform": "windows-x64",
+	"ffmpeg": {
+		"version": "9.0.2-essentials_build-www.gyan.dev",
+		"archiveUrl": "https://github.com/GyanD/codexffmpeg/releases/download/9.0.2/ffmpeg-9.0.2-essentials_build.zip",
+		"archiveSha256": "60f467265b1e312373dbcd92200c2618a74850f98d3d078e94296bb3fa2047ba",
+		"archiveRoot": "ffmpeg-9.0.2-essentials_build",
+		"ffmpegSha256": "3256173f3f8bffd7df12227c68adf68025edb1832273a9530688a7bb1ed8edec",
+		"ffprobeSha256": "f0d36ecbbdd3bcfac3efa078c96c7271c2e68b3810595552ac3b7f17e9a65c52",
+		"licenseSha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903",
+		"sourceUrl": "https://github.com/FFmpeg/FFmpeg/commit/946fcce07b",
+		"builderUrl": "https://www.gyan.dev/ffmpeg/builds/",
+		"license": "GPL-3.0-or-later; statically included dependencies have additional notice/source obligations"
+	},
+	"vulkan": {
+		"version": "1.4.363.0",
+		"archiveUrl": "https://sdk.lunarg.com/sdk/download/1.4.363.0/windows/VulkanRT-X64-1.4.363.0-Components.zip",
+		"archiveSha256": "a25a927aa8b9f0371048f1861cf88ac3b9bc9b1fb332c42d897c8ab32695769a",
+		"archiveRoot": "VulkanRT-X64-1.4.363.0-Components",
+		"dllSha256": "e1fcfc9489beefa6a6d9d11d6c7517f6a2b7f16e0d3fb8f4103bee0210f314a3",
+		"licenseSha256": "404deb98dabf3e54bf9070d59676b31d69a3da2f9f6e56bdf09ad315c04c718c",
+		"sourceUrl": "https://github.com/KhronosGroup/Vulkan-Loader/tree/v1.4.363",
+		"license": "Apache-2.0 AND MIT; see the upstream VulkanRT-License.txt"
+	},
+	"redistribution": {
+		"reviewFile": "packaging/compliance.json",
+		"status": "Blocked pending the corresponding-source and combined-work review recorded there."
+	}
+}

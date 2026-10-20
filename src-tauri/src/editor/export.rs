@@ -246,9 +246,9 @@ pub fn arguments(source: &Path, output: &Path, project: &Project) -> Vec<std::ff
                 "19",
                 "-b:v",
                 "0",
-                "-spatial_aq",
+                "-spatial-aq",
                 "1",
-                "-temporal_aq",
+                "-temporal-aq",
                 "1",
                 "-bf",
                 "0",
@@ -371,6 +371,7 @@ pub async fn run(
     }
     let args = arguments(Path::new(&source.path), &temporary.path, project);
     let mut command = Command::new(executable);
+    crate::config::secure_media_command(&mut command);
     command
         .args(args)
         .stdin(Stdio::null())
@@ -379,7 +380,9 @@ pub async fn run(
         .kill_on_drop(true);
     #[cfg(windows)]
     command.creation_flags(0x08000000 | 0x00004000);
-    let mut child=command.spawn().map_err(|_| "FFmpeg could not start. A build with libx264 and AAC is required on PATH or in resources/bin.")?;
+    let mut child = command
+        .spawn()
+        .map_err(|_| crate::config::media_start_error("FFmpeg"))?;
     status.lock().unwrap().phase = "encoding".into();
     #[cfg(test)]
     {

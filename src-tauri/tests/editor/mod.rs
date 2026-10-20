@@ -21,6 +21,31 @@ fn metadata() -> serde_json::Value {
 }
 
 #[test]
+fn nvenc_uses_canonical_quality_options_supported_by_the_pinned_ffmpeg() {
+    let mut output = Output::default();
+    output.encoder = encoders::Encoder::Nvenc;
+    let project = Project {
+        output,
+        version: 1,
+        token: 1,
+        recording_id: 1,
+        revision: "synthetic".into(),
+        start: 0.0,
+        end: 1.0,
+        info: media::parse(&serde_json::to_vec(&metadata()).unwrap()).unwrap(),
+    };
+    let args = export::arguments(Path::new("input.mp4"), Path::new("output.mp4"), &project);
+    for option in ["-spatial-aq", "-temporal-aq"] {
+        assert!(args
+            .windows(2)
+            .any(|pair| pair[0] == option && pair[1] == "1"));
+    }
+    assert!(!args
+        .iter()
+        .any(|arg| arg == "-spatial_aq" || arg == "-temporal_aq"));
+}
+
+#[test]
 fn validates_compatibility_and_keeps_absolute_stream_indices_and_offsets() {
     let mut data = metadata();
     let info = media::parse(&serde_json::to_vec(&data).unwrap()).unwrap();

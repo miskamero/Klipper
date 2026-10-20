@@ -36,6 +36,7 @@ pub(crate) async fn capture(
     if *cancelled.borrow() {
         return Ok(None);
     }
+    crate::config::secure_media_command(command);
     command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -45,7 +46,9 @@ pub(crate) async fn capture(
     command.creation_flags(0x08000000 | if low_priority { 0x00004000 } else { 0 });
     #[cfg(not(windows))]
     let _ = low_priority;
-    let mut child=command.spawn().map_err(|_| format!("{tool} could not start. Install FFmpeg with {tool} on PATH, or provide it in resources/bin, then restart Klipper."))?;
+    let mut child = command
+        .spawn()
+        .map_err(|_| crate::config::media_start_error(tool))?;
     let result = {
         let output = async {
             let stdout = child

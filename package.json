@@ -18,6 +18,11 @@
 		"native:check": "node scripts/native-deps.mjs",
 		"desktop:build": "tauri build --no-bundle",
 		"desktop:debug": "tauri build --debug --no-bundle",
+		"dist:prepare": "node scripts/windows-deps.mjs prepare",
+		"dist:check": "node scripts/windows-deps.mjs check",
+		"dist:licenses": "node scripts/compliance.mjs prepare",
+		"dist:licenses:check": "node scripts/compliance.mjs check",
+		"dist:windows": "node scripts/package-windows.mjs",
 		"format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,scss,css,json}\" README.md index.html package.json tsconfig.json vite.config.ts eslint.config.mjs .prettierrc.json \"src-tauri/tauri.conf.json\" \"src-tauri/capabilities/*.json\" \"tooling/eslint/*.{js,json}\" \"scripts/*.{mjs,json}\"",
 		"format:check": "prettier --check \"src/**/*.{ts,tsx,js,jsx,scss,css,json}\" README.md index.html package.json tsconfig.json vite.config.ts eslint.config.mjs .prettierrc.json \"src-tauri/tauri.conf.json\" \"src-tauri/capabilities/*.json\" \"tooling/eslint/*.{js,json}\" \"scripts/*.{mjs,json}\"",
 		"lint": "eslint src vite.config.ts eslint.config.mjs tooling/eslint/index.js scripts/*.mjs --max-warnings 0"

@@ -11,6 +11,7 @@ mod playback;
 
 pub fn run() {
     use tauri::Manager;
+    config::secure_runtime();
     let mut exiting = false;
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
