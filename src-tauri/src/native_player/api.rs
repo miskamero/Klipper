@@ -47,6 +47,11 @@ impl Player {
         if !dll.is_file() {
             return Err(missing_dll_message());
         }
+        // The dependency-directory flag requires a fully qualified Windows path.
+        // Canonicalization also removes mixed separators and development's ../ segments.
+        let dll = dll
+            .canonicalize()
+            .map_err(|e| format!("Could not resolve libmpv: {e}"))?;
         let library = LoadLibraryExW(
             wide(dll.to_str().ok_or("Invalid DLL path")?).as_ptr(),
             null_mut(),
@@ -158,7 +163,7 @@ pub(super) fn library_path() -> Result<PathBuf, String> {
     #[cfg(debug_assertions)]
     {
         Ok(PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../native-deps/windows-x64/libmpv-2.dll"))
+            .join("../native-deps/windows-x64-klinoff-rc1/mpv/libmpv-2.dll"))
     }
     #[cfg(not(debug_assertions))]
     {
@@ -177,7 +182,7 @@ fn packaged_library(executable: &std::path::Path) -> Result<PathBuf, String> {
 pub(super) fn missing_dll_message() -> String {
     #[cfg(debug_assertions)]
     {
-        "Native playback is unavailable. Run npm run native:setup -- <extracted-libmpv-2.dll> to install the pinned Windows x64 development DLL in native-deps/windows-x64/. It is not downloaded automatically. HEVC requires the native player in this environment.".into()
+        "Native playback is unavailable. Run npm run native:setup -- <package-directory> to install the corrected KlinoffBuilds packages in native-deps/windows-x64-klinoff-rc1/. It is not downloaded automatically. HEVC requires the native player in this environment.".into()
     }
     #[cfg(not(debug_assertions))]
     {
@@ -195,7 +200,7 @@ mod tests {
         let result = unsafe { Player::from_dll(null_mut(), &directory.path().join("absent.dll")) };
         let error = result.err().expect("missing DLL must fail");
         #[cfg(debug_assertions)]
-        assert!(error.contains("native-deps/windows-x64/"));
+        assert!(error.contains("native-deps/windows-x64-klinoff-rc1/"));
         #[cfg(not(debug_assertions))]
         assert!(error.contains("beside the Klipper executable"));
         assert!(error.contains("not downloaded automatically"));
@@ -210,7 +215,7 @@ mod tests {
         #[cfg(debug_assertions)]
         assert!(library_path()
             .unwrap()
-            .ends_with("native-deps/windows-x64/libmpv-2.dll"));
+            .ends_with("native-deps/windows-x64-klinoff-rc1/mpv/libmpv-2.dll"));
     }
 }
 
@@ -224,3 +229,7 @@ impl Drop for Player {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "../../tests/native_playback/mod.rs"]
+mod integration_tests;

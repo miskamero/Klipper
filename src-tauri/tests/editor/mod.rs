@@ -167,11 +167,9 @@ pub(super) fn make_source(path: &Path, hevc: bool, vfr: bool, offset: bool) {
     if hevc {
         args.extend(["-x265-params", "pools=1:frame-threads=1:log-level=error"]);
     }
-    let number_filter = if cfg!(windows) {
-        "drawtext=fontfile='C\\:/Windows/Fonts/consola.ttf':text='%{n}':x=8:y=8:fontsize=20:fontcolor=white:box=1:boxcolor=black"
-    } else {
-        "drawtext=text='%{n}':x=8:y=8:fontsize=20:fontcolor=white:box=1:boxcolor=black"
-    };
+    // A changing luma marker distinguishes boundary frames without fonts/drawtext.
+    // drawtext is intentionally absent from the KlinoffBuilds encoder distribution.
+    let number_filter = "geq=lum='mod(X+N*13,256)':cb=128:cr=128";
     let vf = if vfr {
         format!("{number_filter},select='if(lt(t,2),1,not(mod(n,2)))'")
     } else {

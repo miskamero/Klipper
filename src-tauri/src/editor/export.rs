@@ -7,11 +7,7 @@ use std::{
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
-use tokio::{
-    io::{AsyncBufReadExt, BufReader},
-    process::Command,
-    sync::watch,
-};
+use tokio::{io::BufReader, process::Command, sync::watch};
 
 #[derive(Clone)]
 pub struct Destination {
@@ -395,15 +391,8 @@ pub async fn run(
         let work = async {
             tokio::try_join!(
                 async {
-                    let mut lines = BufReader::new(stdout).lines();
-                    while let Some(line) = lines
-                        .next_line()
-                        .await
-                        .map_err(|_| "Could not read export progress".to_string())?
-                    {
-                        if line.len() > 4096 {
-                            return Err("Export progress exceeded its limit".to_string());
-                        }
+                    let mut reader = BufReader::new(stdout);
+                    while let Some(line) = crate::media_process::progress_line(&mut reader).await? {
                         if let Some(value) = line
                             .strip_prefix("out_time_us=")
                             .and_then(|v| v.parse::<f64>().ok())

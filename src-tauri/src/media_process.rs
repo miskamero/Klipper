@@ -4,10 +4,34 @@ use std::{
     time::Duration,
 };
 use tokio::{
-    io::{AsyncRead, AsyncReadExt},
+    io::{AsyncBufRead, AsyncBufReadExt, AsyncRead, AsyncReadExt},
     process::Command,
     sync::watch,
 };
+
+// Bound the read itself: Lines::next_line allocates until a newline arrives.
+pub(crate) async fn progress_line(
+    reader: &mut (impl AsyncBufRead + Unpin),
+) -> Result<Option<String>, String> {
+    let mut bytes = Vec::new();
+    reader
+        .take(4097)
+        .read_until(b'\n', &mut bytes)
+        .await
+        .map_err(|_| "Could not read export progress")?;
+    if bytes.len() > 4096 {
+        return Err("Export progress exceeded its limit".into());
+    }
+    if bytes.is_empty() {
+        return Ok(None);
+    }
+    let line = String::from_utf8(bytes).map_err(|_| "Invalid export progress encoding")?;
+    Ok(Some(line.trim_end_matches(['\r', '\n']).to_owned()))
+}
+
+#[cfg(test)]
+#[path = "../tests/media_process/mod.rs"]
+mod tests;
 
 pub(crate) async fn read_bounded(
     reader: impl AsyncRead + Unpin,

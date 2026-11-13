@@ -31,6 +31,29 @@ fn record(db: &Connection, id: &str, path: &Path, title: Option<&str>, game: Opt
 fn load(path: &Path) -> parse::Catalog {
     super::super::sqlite::load(path, Arc::new(AtomicBool::new(false))).unwrap()
 }
+
+#[test]
+fn virtual_contents_with_sql_comments_is_rejected() {
+    for declaration in [
+        "CREATE VIRTUAL TABLE",
+        "CREATE VIRTUAL /* synthetic */ TABLE",
+    ] {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("synthetic.db");
+        let db = Connection::open(&path).unwrap();
+        db.execute_batch(&format!("{declaration} contents USING fts5(created_at,category_id,video_path,image_path,thumbnail_path,metadata,remote_content_id,local_content_id,parent_id,film_reel_path);")).unwrap();
+        db.execute(
+            "INSERT INTO contents(local_content_id,metadata) VALUES('synthetic','{}')",
+            [],
+        )
+        .unwrap();
+        drop(db);
+        let before = fs::read(&path).unwrap();
+        let result = super::super::sqlite::load(&path, Arc::new(AtomicBool::new(false)));
+        assert!(result.is_err(), "accepted virtual table: {declaration}");
+        assert_eq!(before, fs::read(&path).unwrap());
+    }
+}
 fn apply(db: &mut Db, source: &str, entries: Vec<parse::Entry>) -> store::Counts {
     let (prepared, counts) = store::prepare(
         entries,

@@ -161,9 +161,7 @@ it.each(["standalone", "library"])(
 		fireEvent.click(screen.getByText("Edit video"));
 		await screen.findByRole("region", { name: "Video editor" });
 		expect(screen.queryByRole("complementary", { name: "Export queue" })).toBeNull();
-		fireEvent.click(screen.getByText("Save as…"));
-		await screen.findByText(/Destination:/);
-		fireEvent.click(screen.getByText("Export new video"));
+		fireEvent.click(screen.getByText("Export video"));
 		await waitFor(() =>
 			expect(screen.queryByRole("region", { name: "Video editor" })).toBeNull(),
 		);

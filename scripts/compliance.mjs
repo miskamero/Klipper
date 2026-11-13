@@ -20,6 +20,8 @@ import { checksum, install, verify } from "./native-deps.mjs";
 import {
 	assertPublicDistribution as assertReviewed,
 	dependencyFiles,
+	mpv,
+	pins,
 	nativeRoot,
 	root,
 	run,
@@ -29,7 +31,7 @@ import { toolsDirectory, verifyInstallerTools } from "./installer-tools.mjs";
 
 export { assertReviewed };
 
-export const bundleRoot = join(root, "native-deps/compliance-bundle");
+export const bundleRoot = join(root, "native-deps/compliance-bundle-klinoff-rc1");
 const policyPath = join(root, "packaging/compliance.json");
 const bindingPaths = [
 	"packaging/compliance.json",
@@ -360,25 +362,39 @@ export async function prepareCompliance() {
 				(match) => match[1],
 			),
 			completeness:
-				"Configuration identifies enabled features/libraries, not exact static dependency versions or all transitive components. Those sources, notices and builder inputs remain public-release blockers.",
-			mpvBuilderRecipes:
-				"sources/upstream-evidence/mpv-builder-1f8d2e7.zip contains packages/mpv.cmake, packages/ffmpeg.cmake, dependency recipes, patches, toolchain definitions and workflow. Dependency revisions are not fully locked.",
+				"Corrected KlinoffBuilds binary/source pairs and component notices are retained unmodified. Final package review remains required.",
+			klinoffBuilds: { ffmpeg: pins.ffmpeg, libmpv: mpv },
 		};
 		for (const pin of policy.sources) {
-			const archive = join(root, "native-deps/compliance-inputs", pin.file);
-			await download(pin.url, archive, Buffer.from(pin.sha256, "hex").toString("base64"));
+			const archive =
+				pin.local && !pin.file.endsWith("-source.zip")
+					? join(root, "native-deps/downloads", `${pin.sha256}.zip`)
+					: join(root, "native-deps/compliance-inputs", pin.file);
+			if (pin.local) await verify(archive, pin.sha256);
+			else
+				await download(pin.url, archive, Buffer.from(pin.sha256, "hex").toString("base64"));
 			await copy(archive, join(working, "sources/upstream-evidence", pin.file));
 			if (!pin.notices.length) continue;
+			const members = [...pin.notices];
+			if (pin.noticeDirectories?.length) {
+				for (const member of run(tar, ["-tf", archive]).split(/\r?\n/).filter(Boolean)) {
+					if (member.endsWith("/")) continue;
+					contained(temporary, member);
+					if (pin.noticeDirectories.some((prefix) => member.startsWith(prefix)))
+						members.push(member);
+				}
+			}
+			const extracted = await mkdtemp(join(temporary, "notices-"));
 			run(tar, [
 				"-xf",
 				archive,
 				"-C",
-				temporary,
-				...pin.notices.map((name) => `${pin.archiveRoot}/${name}`),
+				extracted,
+				...members.map((name) => (pin.archiveRoot ? `${pin.archiveRoot}/${name}` : name)),
 			]);
-			for (const name of pin.notices)
+			for (const name of members)
 				await copy(
-					join(temporary, pin.archiveRoot, name),
+					join(extracted, pin.archiveRoot || "", name),
 					join(working, "licenses", pin.id, name),
 				);
 		}

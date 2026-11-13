@@ -21,8 +21,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 rusqlite = { version = "0.40.2", features = ["bundled", "backup", "hooks", "serialize"] }
 tokio = { version = "1", features = ["process", "time", "io-util", "fs", "sync", "rt", "macros"] }
-
-[dev-dependencies]
+png = "0.18.1"
 tempfile = "3"
 
 [target.'cfg(windows)'.dependencies]

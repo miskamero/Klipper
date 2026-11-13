@@ -15,6 +15,8 @@ pub struct Recording {
     id: u64,
     name: String,
     path: PathBuf,
+    #[serde(skip)]
+    identity: Option<String>,
 }
 
 pub struct RecordingState {
@@ -54,6 +56,7 @@ impl Selections {
         self.next_id += 1;
         let recording = Recording {
             id: self.next_id,
+            identity: crate::library::files::identity(&path),
             name: path
                 .file_name()
                 .unwrap_or_default()
@@ -140,16 +143,19 @@ impl RecordingState {
             return Err("The selected file's location changed. Select it again.".into());
         }
         let path = verified;
-        app.asset_protocol_scope()
-            .allow_file(&path)
-            .map_err(|e| e.to_string())?;
         let mut selected = self
             .selected
             .lock()
             .map_err(|_| "Recording state unavailable.")?;
-        if expected_id.is_some_and(|id| selected.remembered(id).is_none()) {
-            return Err("Recording selection has changed".into());
+        if let Some(id) = expected_id {
+            let (_, remembered) = selected
+                .remembered(id)
+                .ok_or("Recording selection has changed")?;
+            validate_selected(remembered)?;
         }
+        app.asset_protocol_scope()
+            .allow_file(&path)
+            .map_err(|e| e.to_string())?;
         let recording = selected.insert(path, context);
         self.analysis.supersede();
         Ok(recording)
@@ -170,6 +176,32 @@ impl RecordingState {
             .ok_or("Recording selection has changed")?;
         action(&recording.path)
     }
+
+    pub(crate) fn with_selected_file<T>(
+        &self,
+        id: u64,
+        action: impl FnOnce(&Path) -> Result<T, String>,
+    ) -> Result<T, String> {
+        let selected = self
+            .selected
+            .lock()
+            .map_err(|_| "Recording state unavailable")?;
+        let recording = selected
+            .active
+            .as_ref()
+            .filter(|r| r.id == id)
+            .ok_or("Recording selection has changed")?;
+        validate_selected(recording)?;
+        action(&recording.path)
+    }
+}
+
+fn validate_selected(recording: &Recording) -> Result<(), String> {
+    let file = crate::library::files::describe(&recording.path)?;
+    if validate_file(&recording.path)? != recording.path || file.identity != recording.identity {
+        return Err("The selected file changed location or identity. Select it again.".into());
+    }
+    Ok(())
 }
 
 fn validate_file(path: &Path) -> Result<PathBuf, String> {
@@ -290,6 +322,7 @@ pub async fn analyze_recording(
             return Ok(None);
         };
         // Selection validation and scheduling must be atomic relative to another selection.
+        validate_selected(recording)?;
         state
             .analysis
             .request(config::ffprobe(&app)?, recording.path.clone())
@@ -302,6 +335,36 @@ pub async fn analyze_recording(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(windows)]
+    #[test]
+    fn media_access_rejects_a_replaced_selected_file() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("selected.mp4");
+        std::fs::write(&path, b"synthetic selected media").unwrap();
+        let path = path.canonicalize().unwrap();
+        let state = RecordingState::default();
+        let recording = state
+            .selected
+            .lock()
+            .unwrap()
+            .insert(path.clone(), Context::Standalone);
+        assert!(state.with_selected_file(recording.id, |_| Ok(())).is_ok());
+        std::fs::rename(&path, directory.path().join("original.mp4")).unwrap();
+        std::fs::write(&path, b"unselected replacement").unwrap();
+        let mut dispatched = false;
+        assert!(state
+            .with_selected_file(recording.id, |_| {
+                dispatched = true;
+                Ok(())
+            })
+            .is_err());
+        assert!(!dispatched);
+        assert_eq!(
+            std::fs::read(directory.path().join("original.mp4")).unwrap(),
+            b"synthetic selected media"
+        );
+    }
     #[test]
     fn selection_requires_existing_video_file() {
         let directory = tempfile::tempdir().unwrap();

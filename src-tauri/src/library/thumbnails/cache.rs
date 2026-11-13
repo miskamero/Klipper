@@ -48,9 +48,14 @@ impl Cache {
     pub fn get(&mut self, key: &str) -> Result<Option<Vec<u8>>, String> {
         let image: Option<Vec<u8>> = self
             .db
-            .query_row("SELECT image FROM images WHERE key=?1", [key], |r| r.get(0))
+            .query_row(
+                "SELECT image FROM images WHERE key=?1 AND typeof(image)='blob' AND length(image) BETWEEN 4 AND ?2",
+                params![key, MAX_IMAGE as i64],
+                |r| r.get(0),
+            )
             .optional()
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| e.to_string())?
+            .filter(|bytes: &Vec<u8>| super::valid_image(bytes));
         if image.is_some() {
             self.db.execute("UPDATE images SET used_at=(SELECT coalesce(max(used_at),0)+1 FROM images) WHERE key=?1",[key]).map_err(|e| e.to_string())?;
         }

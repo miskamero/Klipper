@@ -226,6 +226,10 @@ mod tests {
         let error = probe(&directory.path().join("missing-ffprobe"), &file)
             .await
             .unwrap_err();
-        assert!(error.contains("PATH"));
+        assert!(error.contains(if cfg!(all(windows, debug_assertions)) {
+            "native:setup"
+        } else {
+            "PATH"
+        }));
     }
 }

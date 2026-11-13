@@ -2,6 +2,28 @@ use super::*;
 use tempfile::tempdir;
 mod generated;
 mod lifecycle;
+mod png_input;
+
+#[test]
+fn cache_rejects_oversized_and_corrupt_persisted_images() {
+    let directory = tempdir().unwrap();
+    let mut cache = cache::Cache::open(directory.path()).unwrap();
+    let db = rusqlite::Connection::open(directory.path().join("previews-v1.sqlite3")).unwrap();
+    db.execute(
+        "INSERT INTO images VALUES('oversized',zeroblob(?1),0)",
+        [cache::MAX_IMAGE as i64 + 1],
+    )
+    .unwrap();
+    db.execute(
+        "INSERT INTO images VALUES('invalid',?1,0)",
+        [b"not a JPEG".as_slice()],
+    )
+    .unwrap();
+    assert!(cache.get("oversized").unwrap().is_none());
+    assert!(cache.get("invalid").unwrap().is_none());
+    cache.put("oversized", &jpeg()).unwrap();
+    assert_eq!(cache.get("oversized").unwrap(), Some(jpeg()));
+}
 
 fn jpeg() -> Vec<u8> {
     vec![255, 216, 255, 217]

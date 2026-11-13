@@ -1,16 +1,28 @@
 {
 	"platform": "windows-x64",
 	"ffmpeg": {
-		"version": "9.0.2-essentials_build-www.gyan.dev",
-		"archiveUrl": "https://github.com/GyanD/codexffmpeg/releases/download/9.0.2/ffmpeg-9.0.2-essentials_build.zip",
-		"archiveSha256": "60f467265b1e312373dbcd92200c2618a74850f98d3d078e94296bb3fa2047ba",
-		"archiveRoot": "ffmpeg-9.0.2-essentials_build",
-		"ffmpegSha256": "3256173f3f8bffd7df12227c68adf68025edb1832273a9530688a7bb1ed8edec",
-		"ffprobeSha256": "f0d36ecbbdd3bcfac3efa078c96c7271c2e68b3810595552ac3b7f17e9a65c52",
-		"licenseSha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903",
-		"sourceUrl": "https://github.com/FFmpeg/FFmpeg/commit/946fcce07b",
-		"builderUrl": "https://www.gyan.dev/ffmpeg/builds/",
-		"license": "GPL-3.0-or-later; statically included dependencies have additional notice/source obligations"
+		"platform": "windows-x64",
+		"provider": "KlinoffBuilds",
+		"version": "9.0.2",
+		"directory": "ffmpeg",
+		"archiveFile": "klinoff-ffmpeg-9.0.2-encoder-rc1-packaging2.zip",
+		"archiveSha256": "b63c05b16e18636b17357bdcafe30aee43515c4bd8af77d4683cf8e789551f12",
+		"sourceFile": "klinoff-ffmpeg-9.0.2-encoder-rc1-packaging2-source.zip",
+		"sourceSha256": "a86209372128e9097652b83516c509a06d0cbccf6e5ced56e1b2ac672ea06f14",
+		"releaseLockSha256": "b67577dbcd9c74a6dd42e8f60b3a3a7a2b1f03d1ba090c10f6ec688652d0ec36",
+		"runtimeFiles": {
+			"ffmpeg.exe": "7f6e0ac892f69fc44b3943208e49587802eebbc3c1d05b03daff9d100eb19b95",
+			"ffprobe.exe": "7bc1691292ef2118385f4cfab10c5b01708ed4116f669069a52095187dc33d3c",
+			"libgcc_s_seh-1.dll": "791ebf66e99c7c1b4ed3666468cec45a0172b4c8942ac6c84c3e9cab3e1b5270",
+			"libstdc++-6.dll": "4e4822dc4aaa99383f581dae7ab9464ae89346c5ca742f7efbcdebe20b0fe7b5",
+			"libwinpthread-1.dll": "817e5b2636f532666e8f255e225af75e9d0c41b141512fde45264070a65b1c92",
+			"libx264-165.dll": "a58995b5af6d0fcf5d17f354bfa54bb05d99056ed167eec9c8e86a3a63478ec1",
+			"libx265-217.dll": "48a6c942cab3196d740d7af3cfc8359dc7bd833c87c1ca24b8d231b70daa9e18"
+		},
+		"license": "GPL-3.0-or-later; components retain their individual terms and runtime exceptions",
+		"distributionNote": "Private corrected RC1 packaging2. Binary and corresponding-source archives must travel together; no public download URL exists.",
+		"ffmpegSha256": "7f6e0ac892f69fc44b3943208e49587802eebbc3c1d05b03daff9d100eb19b95",
+		"ffprobeSha256": "7bc1691292ef2118385f4cfab10c5b01708ed4116f669069a52095187dc33d3c"
 	},
 	"vulkan": {
 		"version": "1.4.363.0",

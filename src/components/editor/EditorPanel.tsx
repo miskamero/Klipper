@@ -33,7 +33,6 @@ export default function EditorPanel({
 	});
 	const [error, setError] = useState("");
 	const [resolving, setResolving] = useState(false);
-	const [destination, setDestination] = useState("");
 	const [encoder, setEncoder] = useState<Encoder>("auto");
 	const [support, setSupport] = useState<{ nvenc: boolean; detail: string } | null>(null);
 	const [starting, setStarting] = useState(false);
@@ -42,6 +41,7 @@ export default function EditorPanel({
 	const latest = useRef(selection);
 	const running = useRef(false);
 	const alive = useRef(true);
+	const exportPending = useRef(false);
 	const exporting = starting;
 	const dirty = `${selection.start}:${selection.end}` !== saved;
 	useEffect(() => {
@@ -134,6 +134,27 @@ export default function EditorPanel({
 	}
 	const synced = selection.start === project.start && selection.end === project.end;
 	const inputsValid = parseTime(texts.start) !== null && parseTime(texts.end) !== null;
+	async function exportVideo() {
+		if (exportPending.current || running.current || !synced || !inputsValid) return;
+		exportPending.current = true;
+		setStarting(true);
+		await action(async () => {
+			try {
+				const path = await invoke<string | null>("editor_destination", {
+					token: initial.token,
+				});
+				if (!path || !alive.current) return;
+				const id = await invoke<number>("editor_export", {
+					token: initial.token,
+					encoder,
+				});
+				if (alive.current) onQueued(id);
+			} finally {
+				exportPending.current = false;
+				if (alive.current) setStarting(false);
+			}
+		});
+	}
 	return (
 		<section className={styles.editor} aria-label="Video editor">
 			<TrimTimeline
@@ -246,49 +267,13 @@ export default function EditorPanel({
 					</p>
 				</div>
 				<button
-					disabled={exporting || resolving}
-					onClick={() =>
-						void action(async () => {
-							setStarting(true);
-							try {
-								const path = await invoke<string | null>("editor_destination", {
-									token: initial.token,
-								});
-								if (path) setDestination(path);
-							} finally {
-								if (alive.current) setStarting(false);
-							}
-						})
-					}
-				>
-					Save as…
-				</button>
-				<button
 					className={styles.primary}
-					disabled={exporting || resolving || !synced || !inputsValid || !destination}
-					onClick={() =>
-						void action(async () => {
-							setStarting(true);
-							try {
-								const id = await invoke<number>("editor_export", {
-									token: initial.token,
-									encoder,
-								});
-								onQueued(id);
-							} finally {
-								if (alive.current) setStarting(false);
-							}
-						})
-					}
+					disabled={exporting || resolving || !synced || !inputsValid}
+					onClick={() => void exportVideo()}
 				>
-					Export new video
+					Export video
 				</button>
 			</div>
-			{destination && (
-				<p className={styles.path} title={destination}>
-					Destination: {destination}
-				</p>
-			)}
 			{resolving && <p role="status">Aligning start/end points to source frames…</p>}
 			{error && <p role="alert">{error}</p>}
 			<p className={styles.note}>

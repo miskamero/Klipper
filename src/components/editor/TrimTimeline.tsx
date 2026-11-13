@@ -112,7 +112,7 @@ export default function TrimTimeline({
 					onCommit();
 				}}
 			>
-				<Storyboard token={token} duration={duration} />
+				<Storyboard key={`${token}:${duration}`} token={token} duration={duration} />
 				<div
 					className={styles.selection}
 					style={{ left: percentage(start), right: percentage(duration - end) }}

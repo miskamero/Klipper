@@ -138,7 +138,7 @@ pub async fn editor_begin(
     state: State<'_, EditorState>,
     id: u64,
 ) -> Result<Project, String> {
-    let path = recordings.with_selected(id, |p| Ok(p.to_path_buf()))?;
+    let path = recordings.with_selected_file(id, |p| Ok(p.to_path_buf()))?;
     let editor = state.0.clone();
     let permit = editor
         .preview

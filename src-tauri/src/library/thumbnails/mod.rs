@@ -1,4 +1,5 @@
 pub(crate) mod cache;
+mod png;
 use super::{files, Library};
 use crate::{analysis::Analysis, config, media_process};
 use std::{
@@ -194,6 +195,19 @@ pub(crate) async fn extract_image(
     path: &Path,
     cancel: &mut watch::Receiver<bool>,
 ) -> Result<Option<Vec<u8>>, String> {
+    if *cancel.borrow() {
+        return Ok(None);
+    }
+    let selected = path.to_owned();
+    let cancelled = cancel.clone();
+    let temporary =
+        tauri::async_runtime::spawn_blocking(move || png::prepare(&selected, &cancelled))
+            .await
+            .map_err(|_| "Provider PNG decoder stopped")??;
+    if *cancel.borrow() {
+        return Ok(None);
+    }
+    let path = temporary.as_ref().map_or(path, |file| file.path());
     let mut command = tokio::process::Command::new(executable);
     command.args(["-v","error","-nostdin","-max_alloc","67108864","-threads","1","-filter_threads","1","-protocol_whitelist","file","-format_whitelist","image2","-f","image2","-pattern_type","none","-i"]).arg(path)
         .args(["-frames:v","1","-an","-sn","-dn","-vf","scale=w='max(2,trunc(min(320,180*dar)/2)*2)':h='max(2,trunc(min(180,320/dar)/2)*2)',setsar=1","-c:v","mjpeg","-threads","1","-q:v","5","-f","image2pipe","pipe:1"]);

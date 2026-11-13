@@ -31,25 +31,14 @@ async fn provider_images_supersede_generated_cache_survive_restart_and_fall_back
         .unwrap()
         .success());
     let image = temp.path().join("provider.png");
-    assert!(Command::new("ffmpeg")
-        .args([
-            "-v",
-            "error",
-            "-nostdin",
-            "-n",
-            "-f",
-            "lavfi",
-            "-i",
-            "color=c=green:s=640x360",
-            "-frames:v",
-            "1",
-            "-threads",
-            "1"
-        ])
-        .arg(&image)
-        .status()
-        .unwrap()
-        .success());
+    let mut encoder = png::Encoder::new(fs::File::create(&image).unwrap(), 640, 360);
+    encoder.set_color(png::ColorType::Rgb);
+    encoder.set_depth(png::BitDepth::Eight);
+    let mut writer = encoder.write_header().unwrap();
+    writer
+        .write_image_data(&[0, 128, 0].repeat(640 * 360))
+        .unwrap();
+    writer.finish().unwrap();
     let original = fs::read(&video).unwrap();
     let original_image = fs::read(&image).unwrap();
     let database = temp.path().join("library.sqlite3");
