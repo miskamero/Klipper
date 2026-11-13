@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { checksum } from "./native-deps.mjs";
+import { pins, mpv } from "./windows-deps.mjs";
 import {
 	assertReviewed,
 	contained,
@@ -24,14 +25,27 @@ test("approval alone cannot clear unresolved corresponding-source obligations", 
 	const policy = JSON.parse(
 		await readFile(new URL("../packaging/compliance.json", import.meta.url)),
 	);
-	assert.throws(() => assertReviewed(policy.review), /libmpv.*exact revisions/s);
-	assert.equal(policy.sources.length, 6);
+	assert.throws(() => assertReviewed(policy.review), /KlinoffBuilds.*corresponding-source/s);
+	assert.equal(policy.sources.filter((pin) => pin.local).length, 4);
 	assert.equal(policy.review.approved, false);
 	assert.match(policy.obligations.permissiveComponents, /MIT does not require/);
 	assert.match(policy.verificationPolicy.reproducibility, /not a release requirement/);
 	for (const source of policy.sources) {
-		assert.match(source.url, /^https:\/\/codeload\.github\.com\/.+\/zip\/[a-f0-9]{40}$/);
+		if (source.local) {
+			assert.match(source.file, /^klinoff-.+-rc1-packaging2(?:-source)?\.zip$/);
+			assert.equal(source.url, undefined);
+		} else assert.match(source.url, /^https:\/\/codeload\.github\.com\/.+\/zip\/[a-f0-9]{40}$/);
 		assert.match(source.sha256, /^[a-f0-9]{64}$/);
+	}
+	for (const pin of [pins.ffmpeg, mpv]) {
+		assert.equal(
+			policy.sources.find((entry) => entry.file === pin.sourceFile)?.sha256,
+			pin.sourceSha256,
+		);
+		assert.equal(
+			policy.sources.find((entry) => entry.file === pin.archiveFile)?.sha256,
+			pin.archiveSha256,
+		);
 	}
 });
 

@@ -1,5 +1,23 @@
 import { readFile } from "node:fs/promises";
 
+// Deliberately finite: unexpected non-system imports must stop setup and packaging.
+const systemDlls = new Set(
+	`advapi32 avicap32 avrt bcrypt bcryptprimitives cabinet cfgmgr32 clbcatq combase comctl32 comdlg32 crypt32 cryptbase cryptsp d2d1 d3d11 d3d12 d3dcompiler_47 dbghelp dnsapi dwmapi dwrite dxgi dxva2 gdi32 gdiplus imm32 iphlpapi kernel32 kernelbase mf mfplat mfreadwrite mfuuid mpr msimg32 msvcrt ncrypt normaliz ntdll ole32 oleacc oleaut32 opengl32 powrprof propsys psapi rpcrt4 secur32 setupapi shcore shell32 shlwapi sspicli ucrtbase user32 userenv usp10 uxtheme version winhttp wininet winmm winspool wintrust wldap32 ws2_32 wtsapi32`
+		.split(" ")
+		.map((name) => `${name}.dll`),
+);
+
+export function unexpectedImports(imports, bundledNames) {
+	const bundled = new Set(bundledNames.map((name) => name.toLowerCase()));
+	return imports.filter(
+		(name) =>
+			!systemDlls.has(name) &&
+			!/^api-ms-win-(core|crt|security)-[a-z0-9-]+\.dll$/.test(name) &&
+			!/^ext-ms-win-[a-z0-9-]+\.dll$/.test(name) &&
+			!bundled.has(name),
+	);
+}
+
 // Inspect PE imports without loading or executing a downloaded binary.
 export function inspectPe(bytes) {
 	const fail = () => {
@@ -35,7 +53,7 @@ export function inspectPe(bytes) {
 		const end = bytes.indexOf(0, start);
 		if (end < start || end - start > 255) fail();
 		const value = bytes.toString("ascii", start, end).toLowerCase();
-		if (!/^[a-z0-9_.-]+\.dll$/.test(value)) fail();
+		if (!/^[a-z0-9_+.-]+\.dll$/.test(value)) fail();
 		return value;
 	};
 	const imports = new Set();

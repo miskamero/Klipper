@@ -1699,6 +1699,7 @@ dependencies = [
 name = "klipper"
 version = "0.1.0"
 dependencies = [
+ "png 0.18.1",
  "rusqlite",
  "serde",
  "serde_json",

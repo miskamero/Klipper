@@ -3,49 +3,59 @@
 	"review": {
 		"approved": false,
 		"blockers": [
-			"libmpv: obtain the exact revisions, corresponding sources, patches, configuration and notices for every linked dependency of the pinned shinchiro DLL. The verified builder commit uses floating dependency checkouts; its source archive is not a complete corresponding-source bundle.",
-			"FFmpeg/FFprobe: obtain the exact Gyan dependency revisions, corresponding sources, patches, notices and build scripts/toolchain inputs. The verified FFmpeg commit and embedded configuration do not identify all static dependency sources.",
+			"Review the corrected KlinoffBuilds RC1 corresponding-source bundles, component notices and final Klipper package together before any public distribution. The repositories and assets remain private.",
 			"Installer: establish source correspondence and availability for the redistributed NSIS 3.11 CPL-1.0 LZMA module and preserve its linking exception and notices. The MIT/Apache-2.0 Tauri plugin does not itself require disclosure of an exact dependency lockfile or a byte-identical rebuild.",
 			"Complete the final combined-work license review, including the exact media dependencies, before changing approval. No incompatibility has been established, but an incomplete component inventory cannot establish GPL-3.0-only compatibility."
 		]
 	},
 	"sources": [
 		{
-			"id": "mpv",
-			"file": "mpv-492bae0768.zip",
-			"url": "https://codeload.github.com/mpv-player/mpv/zip/492bae0768f5e826991bf9fb222fa303371e8498",
-			"sha256": "ac37e8d602c543ea873cd3edcde074162be4eb36391d04627cc9eeff332ef34a",
-			"archiveRoot": "mpv-492bae0768f5e826991bf9fb222fa303371e8498",
+			"id": "klinoff-libmpv",
+			"file": "klinoff-libmpv-0.41.0-rc1-packaging2.zip",
+			"sha256": "4a2645524caf35cbb77e2dc53ff72d6e162fa5b72e90eb829a1f04629af11e4b",
+			"local": true,
+			"archiveRoot": "",
 			"notices": [
-				"Copyright",
-				"LICENSE.GPL",
-				"LICENSE.LGPL"
+				"RELEASE-NOTICE.txt",
+				"COMPONENT-LICENSES.json",
+				"release-source/source-link.json"
 			],
-			"scope": "Exact top-level commit identified by the pinned binary release; linked dependencies remain unresolved."
+			"noticeDirectories": [
+				"LICENSES/"
+			],
+			"scope": "Unmodified corrected binary package; all component licenses and source links retained."
 		},
 		{
-			"id": "mpv-builder",
-			"file": "mpv-builder-1f8d2e7.zip",
-			"url": "https://codeload.github.com/shinchiro/mpv-winbuild-cmake/zip/1f8d2e76255abc48f0456d9be99b4cab9c6566e6",
-			"sha256": "5933a6e0bb035c6472d820d61344a60ab21d2ac6bc5355b00417f58df91b33dd",
-			"archiveRoot": "mpv-winbuild-cmake-1f8d2e76255abc48f0456d9be99b4cab9c6566e6",
+			"id": "klinoff-libmpv-source",
+			"file": "klinoff-libmpv-0.41.0-rc1-packaging2-source.zip",
+			"sha256": "9284c5c40b7a7a6d966308742d40b694f9afa6538914d942b9fb89f90df2e226",
+			"local": true,
 			"notices": [],
-			"scope": "Exact workflow commit of build run 38657432408. Contains recipes and patches, but does not lock all fetched revisions. Build logs were retained upstream for one day; no complete dependency lock was recovered."
+			"scope": "Matching corrected RC1 corresponding source, locked inputs and build materials. Keep alongside its binary asset."
 		},
 		{
-			"id": "ffmpeg",
-			"file": "ffmpeg-946fcce07b.zip",
-			"url": "https://codeload.github.com/FFmpeg/FFmpeg/zip/946fcce07b6dcd0331c8cc609192aeff5e1924f8",
-			"sha256": "8cffa6ccf78df6d39d57bd61baaf19e8bf0a7d590eef0d838de69932e8de3572",
-			"archiveRoot": "FFmpeg-946fcce07b6dcd0331c8cc609192aeff5e1924f8",
+			"id": "klinoff-ffmpeg",
+			"file": "klinoff-ffmpeg-9.0.2-encoder-rc1-packaging2.zip",
+			"sha256": "b63c05b16e18636b17357bdcafe30aee43515c4bd8af77d4683cf8e789551f12",
+			"local": true,
+			"archiveRoot": "",
 			"notices": [
-				"COPYING.GPLv2",
-				"COPYING.GPLv3",
-				"COPYING.LGPLv2.1",
-				"COPYING.LGPLv3",
-				"LICENSE.md"
+				"RELEASE-NOTICE.txt",
+				"COMPONENT-LICENSES.json",
+				"release-source/source-link.json"
 			],
-			"scope": "Exact top-level commit identified by Gyan release 9.0.2. Static dependency revisions and builder inputs remain unresolved."
+			"noticeDirectories": [
+				"LICENSES/"
+			],
+			"scope": "Unmodified corrected binary package; all component licenses and source links retained."
+		},
+		{
+			"id": "klinoff-ffmpeg-source",
+			"file": "klinoff-ffmpeg-9.0.2-encoder-rc1-packaging2-source.zip",
+			"sha256": "a86209372128e9097652b83516c509a06d0cbccf6e5ced56e1b2ac672ea06f14",
+			"local": true,
+			"notices": [],
+			"scope": "Matching corrected RC1 corresponding source, locked inputs and build materials. Keep alongside its binary asset."
 		},
 		{
 			"id": "vulkan-loader",
@@ -125,7 +135,7 @@
 	"obligations": {
 		"correspondingSource": "GPL-covered libmpv/FFmpeg and linked non-system components require applicable corresponding source, modifications and necessary build/install scripts. Preserve component notices and satisfy the NSIS LZMA module CPL source/notice conditions and exception.",
 		"permissiveComponents": "Preserve applicable MIT/Apache-2.0 notices and terms, including dependency notices. MIT does not require plugin source disclosure, an exact Cargo.lock, or byte-identical rebuilds.",
-		"evidenceGaps": "The top-level media sources and floating builder recipes do not establish the exact linked dependency sources and build inputs. The unresolved review blockers remain mandatory release gates."
+		"evidenceGaps": "Corrected KlinoffBuilds RC1 binary/source pairs replace the former third-party media evidence. Final combined-work review and installer correspondence remain release gates."
 	},
 	"verificationPolicy": {
 		"integrity": "Pinned SHA-256 hashes, complete tool inventories, source-state checks, locked dependency verification and compiler notice recollection are internal safeguards supporting release review.",

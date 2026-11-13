@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { constants, copyFile, mkdir, readFile, stat } from "node:fs/promises";
+import { constants, copyFile, mkdir, stat } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -29,19 +29,19 @@ export async function install(source, destination, expected) {
 }
 
 async function main(args) {
-	const root = fileURLToPath(new URL("../", import.meta.url));
-	const manifest = JSON.parse(await readFile(new URL("./libmpv.json", import.meta.url), "utf8"));
-	const destination = resolve(root, "native-deps/windows-x64/libmpv-2.dll");
+	if (process.platform !== "win32" || process.arch !== "x64")
+		throw new Error("Native setup currently supports Windows x64 only");
+	const { prepareMedia, verifyDependencies } = await import("./windows-deps.mjs");
 	if (args.length === 0) {
-		await verify(destination, manifest.dllSha256);
+		await verifyDependencies();
 	} else if (args.length === 2 && args[0] === "install") {
-		await install(resolve(args[1]), destination, manifest.dllSha256);
+		await prepareMedia(resolve(args[1]));
 	} else {
 		throw new Error(
-			"Usage: npm run native:check OR npm run native:setup -- <extracted-libmpv-2.dll>",
+			"Usage: npm run native:check OR npm run native:setup -- <corrected-package-directory>",
 		);
 	}
-	console.log(`Verified libmpv ${manifest.version}: ${destination}`);
+	console.log("Verified pinned KlinoffBuilds media runtime.");
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

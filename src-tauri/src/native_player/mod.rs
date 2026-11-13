@@ -403,6 +403,10 @@ pub async fn mpv_control(
         control
     };
     let is_stop = matches!(control, Control::Stop);
+    let is_load = matches!(
+        control,
+        Control::Load | Control::LoadPaused | Control::Reload
+    );
     if is_stop && state.fullscreen.active(id) {
         fullscreen::set(&window, id, false).await?;
     }
@@ -419,6 +423,12 @@ pub async fn mpv_control(
     };
     if is_stop {
         send(None)?;
+    } else if is_load {
+        recordings.with_selected_file(id, |path| {
+            send(Some(
+                path.to_str().ok_or("Unsupported filename")?.to_owned(),
+            ))
+        })?;
     } else {
         recordings.with_selected(id, |path| {
             send(Some(

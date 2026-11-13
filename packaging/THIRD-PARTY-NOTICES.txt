@@ -1,9 +1,9 @@
 KLIPPER WINDOWS DISTRIBUTION - THIRD-PARTY NOTICES AND SOURCE MATERIALS
 
 STATUS: INTERNAL VALIDATION ONLY. PUBLIC REDISTRIBUTION IS NOT APPROVED.
-The media dependency sources and installer build correspondence listed below
-are incomplete. Bundled evidence is not complete Corresponding Source, a written
-source offer, or a declaration of license compliance.
+Corrected KlinoffBuilds RC1 media binary/source pairs and component notices are
+retained. Final combined-work review and installer build correspondence remain
+release gates. This is not a legal certification or approval to publish.
 
 Klipper application code: GPL-3.0-only. See LICENSE.txt and the matching source
 and packaging scripts in sources/application-source.zip. Third-party components
@@ -22,31 +22,28 @@ compliance/manifest.json records their SHA-256 hashes and binds the collection
 to the binary pins and package lockfiles. Both installer and ZIP include these
 same materials. Copyright headers remain intact in the supplied source archives.
 
-LIBMPV: shinchiro 20261015, mpv 492bae0768f5e826991bf9fb222fa303371e8498.
-https://github.com/shinchiro/mpv-winbuild-cmake/releases/tag/20261015
-https://github.com/mpv-player/mpv
-mpv derives from MPlayer/mplayer2 and is copyright its contributors. Its default
-license is GPL-2.0-or-later, with other file licenses documented in Copyright.
-This build includes GPL dependencies and FFmpeg with GPL/version3 enabled; it
-must not be described as LGPL-only. See compliance/licenses/mpv/ and its source.
-Builder commit 1f8d2e76255abc48f0456d9be99b4cab9c6566e6 contains recipes and
-patches but fetches some dependencies without fixed revisions. Required before
-public distribution: exact linked dependency revisions, corresponding sources,
-notices, patches, build configuration and toolchain inputs. The collected builder
-archive and top-level mpv source alone do not meet that requirement.
+LIBMPV: KlinoffBuilds 0.41.0 RC1 packaging2, GPL-3.0-or-later distribution.
+mpv derives from MPlayer/mplayer2 and is copyright its contributors.
+FFmpeg playback libraries are statically linked; no separate playback SDK is shipped.
+The five companion DLLs are GCC runtimes, shaderc and SPIRV-Cross.
+See compliance/licenses/klinoff-libmpv/ for original notices and component terms.
 
-FFMPEG/FFPROBE: Gyan 9.0.2 essentials static x64 build, GPLv3 or later.
+FFMPEG/FFPROBE: KlinoffBuilds 9.0.2 encoder RC1 packaging2.
 Copyright (c) 2000-2026 the FFmpeg developers and included library authors.
-https://www.gyan.dev/ffmpeg/builds/
-See licenses/FFmpeg-GPL.txt, FFmpeg-buildconf.txt and FFmpeg-version.txt.
-The verified FFmpeg commit is 946fcce07b6dcd0331c8cc609192aeff5e1924f8.
-The build enables GPL/version3 and does not enable nonfree. Its FFmpeg code can
-use GPLv3 alongside Klipper's GPL-3.0-only code, subject to the linked components'
-terms. In particular it enables x264, x265, Xvid, Rubber Band and vid.stab, as
-well as many LGPL/permissive libraries. A full dependency review is still needed.
-Required: exact static dependency sources and notices, patches, compiler/build
-configuration and scripts for these binaries. Embedded configuration and the
-collected top-level FFmpeg source do not identify all those sources.
+FFmpeg n9.0.2: 946fcce07b6dcd0331c8cc609192aeff5e1924f8.
+GPL-3.0-or-later (--enable-gpl --enable-version3; no --enable-nonfree).
+FFmpeg contains code based in part on the work of the Independent JPEG Group.
+x264 and x265 DLLs retain GPL-2.0-or-later terms, using the compatible GPLv3 route.
+GCC runtimes retain GPLv3 with Runtime Library Exception 3.1. MinGW-w64 and
+winpthreads retain their own notices. See compliance/licenses/klinoff-ffmpeg/.
+See FFmpeg-version.txt and FFmpeg-buildconf.txt for the actual configuration.
+
+Both corrected binary ZIPs and their matching -source.zip archives are retained
+unmodified under compliance/sources/upstream-evidence/ with their original names.
+The source-link.json files identify exact source SHA-256 hashes and locked inputs.
+Original component inventories and all LICENSES/ material are also extracted in
+compliance/licenses/. No public download URL exists; the repositories are private.
+These third-party terms do not change Klipper's GPL-3.0-only application license.
 
 VULKAN LOADER: Khronos/LunarG 1.4.363.0, MIT and Apache-2.0 components.
 The unaltered runtime notice is licenses/VulkanRT-License.txt, including Khronos,

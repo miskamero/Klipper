@@ -68,7 +68,7 @@ it("aligns typed boundaries natively before preview and exports only to a select
 	const { command, state, open } = setup();
 	expect(screen.getByRole("button", { name: "Set start here" })).toBeTruthy();
 	expect(screen.getByRole("button", { name: "Set end here" })).toBeTruthy();
-	expect((screen.getByText("Export new video") as HTMLButtonElement).disabled).toBe(true);
+	expect((screen.getByText("Export video") as HTMLButtonElement).disabled).toBe(false);
 	fireEvent.change(screen.getByLabelText("Trim start time"), { target: { value: "0.25" } });
 	fireEvent.blur(screen.getByLabelText("Trim start time"));
 	await waitFor(() =>
@@ -81,13 +81,13 @@ it("aligns typed boundaries natively before preview and exports only to a select
 	expect(state).toHaveBeenCalledWith({ dirty: true, busy: false });
 	expect(screen.queryByText("Preview selection")).toBeNull();
 	expect(command).toHaveBeenCalledWith({ kind: "previewRange", value: [0.25, 4] });
-	fireEvent.click(screen.getByText("Save as…"));
-	await screen.findByText(/Destination: C:/);
-	fireEvent.click(screen.getByText("Export new video"));
+	fireEvent.click(screen.getByText("Export video"));
 	await waitFor(() =>
 		expect(invoke).toHaveBeenCalledWith("editor_export", { token: 1, encoder: "auto" }),
 	);
 	expect(open).toHaveBeenCalledWith(21);
+	expect(invoke).toHaveBeenCalledWith("editor_destination", { token: 1 });
+	expect(screen.queryByText("Save as…")).toBeNull();
 	expect(vi.mocked(invoke).mock.calls.some(([name]) => name === "editor_status")).toBe(false);
 });
 it("supports keyboard handles, separate frame controls and native playhead feedback", async () => {
@@ -130,12 +130,72 @@ it("bounds storyboard extraction to eight samples and stops requesting after unm
 		8,
 	);
 });
-it("keeps genuine export failures visible without presenting a success action", async () => {
-	setup();
-	fireEvent.click(screen.getByText("Save as…"));
-	await screen.findByText(/Destination:/);
-	vi.mocked(invoke).mockRejectedValueOnce("Output filename is reserved");
-	fireEvent.click(screen.getByText("Export new video"));
-	await screen.findByText("Output filename is reserved");
-	expect(screen.queryByText("Open exported recording")).toBeNull();
+it.each(["editor_destination", "editor_export"])(
+	"shows %s errors and allows retry",
+	async (failed) => {
+		const { open } = setup();
+		const implementation = vi.mocked(invoke).getMockImplementation()!;
+		vi.mocked(invoke).mockImplementation(async (name, args, options) => {
+			if (name === failed) throw new Error("Output filename is reserved");
+			return implementation(name, args, options);
+		});
+		fireEvent.click(screen.getByText("Export video"));
+		await screen.findByText("Output filename is reserved");
+		expect(open).not.toHaveBeenCalled();
+		expect((screen.getByText("Export video") as HTMLButtonElement).disabled).toBe(false);
+		vi.mocked(invoke).mockImplementation(implementation);
+		fireEvent.click(screen.getByText("Export video"));
+		await waitFor(() => expect(open).toHaveBeenCalledWith(21));
+	},
+);
+
+it("does nothing when the Save dialog is cancelled, including after an earlier selection", async () => {
+	const { open } = setup();
+	fireEvent.click(screen.getByText("Export video"));
+	await waitFor(() => expect(open).toHaveBeenCalledWith(21));
+	vi.mocked(invoke).mockResolvedValueOnce(null);
+	fireEvent.click(screen.getByText("Export video"));
+	await waitFor(() =>
+		expect((screen.getByText("Export video") as HTMLButtonElement).disabled).toBe(false),
+	);
+	expect(open).toHaveBeenCalledTimes(1);
+	expect(vi.mocked(invoke).mock.calls.filter(([name]) => name === "editor_export")).toHaveLength(
+		1,
+	);
+	expect(screen.queryByRole("alert")).toBeNull();
+});
+
+it("blocks repeated clicks throughout the dialog and export request, preserving the encoder", async () => {
+	const { open, state } = setup();
+	let save!: (value: string | null) => void;
+	let queued!: (value: number) => void;
+	const implementation = vi.mocked(invoke).getMockImplementation()!;
+	vi.mocked(invoke).mockImplementation((name, args, options) => {
+		if (name === "editor_destination")
+			return new Promise((resolve) => {
+				save = resolve;
+			});
+		if (name === "editor_export")
+			return new Promise((resolve) => {
+				queued = resolve;
+			});
+		return implementation(name, args, options);
+	});
+	fireEvent.change(screen.getByLabelText("Export encoder"), { target: { value: "cpu" } });
+	const button = screen.getByText("Export video");
+	fireEvent.click(button);
+	fireEvent.click(button);
+	expect(
+		vi.mocked(invoke).mock.calls.filter(([name]) => name === "editor_destination"),
+	).toHaveLength(1);
+	expect(state).toHaveBeenCalledWith({ dirty: false, busy: true });
+	expect(invoke).not.toHaveBeenCalledWith("editor_export", expect.anything());
+	await act(async () => save("C:/synthetic/new.mp4"));
+	fireEvent.click(button);
+	expect(invoke).toHaveBeenCalledWith("editor_export", { token: 1, encoder: "cpu" });
+	expect(vi.mocked(invoke).mock.calls.filter(([name]) => name === "editor_export")).toHaveLength(
+		1,
+	);
+	await act(async () => queued(21));
+	expect(open).toHaveBeenCalledTimes(1);
 });

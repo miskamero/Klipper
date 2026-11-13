@@ -6,10 +6,10 @@ import { pipeline } from "node:stream/promises";
 import { Readable, Transform } from "node:stream";
 import { spawnSync } from "node:child_process";
 import { install, verify } from "./native-deps.mjs";
-import { inspectFile } from "./windows-pe.mjs";
+import { inspectFile, unexpectedImports } from "./windows-pe.mjs";
 
 export const root = fileURLToPath(new URL("../", import.meta.url));
-export const nativeRoot = join(root, "native-deps/windows-x64");
+export const nativeRoot = join(root, "native-deps/windows-x64-klinoff-rc1");
 export const pins = JSON.parse(await readFile(new URL("./windows-native.json", import.meta.url)));
 export const mpv = JSON.parse(await readFile(new URL("./libmpv.json", import.meta.url)));
 const redistributionReview = JSON.parse(
@@ -37,7 +37,11 @@ export function run(executable, args, options = {}) {
 
 export async function runVerified(executable, hash, args, options = {}) {
 	await verify(executable, hash);
-	return run(executable, args, options);
+	return run(executable, args, {
+		...options,
+		cwd: resolve(executable, ".."),
+		env: { ...process.env, PATH: join(process.env.SystemRoot || "C:/Windows", "System32") },
+	});
 }
 
 export function assertPublicDistribution(review = redistributionReview) {
@@ -49,18 +53,37 @@ export function assertPublicDistribution(review = redistributionReview) {
 }
 
 export const dependencyFiles = [
-	["libmpv-2.dll", "libmpv-2.dll", mpv.dllSha256],
-	["ffmpeg/ffmpeg.exe", "bin/ffmpeg.exe", pins.ffmpeg.ffmpegSha256],
-	["ffmpeg/ffprobe.exe", "bin/ffprobe.exe", pins.ffmpeg.ffprobeSha256],
-	["vulkan/vulkan-1.dll", "vulkan-1.dll", pins.vulkan.dllSha256],
-	["ffmpeg/LICENSE", "licenses/FFmpeg-GPL.txt", pins.ffmpeg.licenseSha256],
+	...Object.entries(mpv.runtimeFiles).map(([file, hash]) => [
+		`mpv/${basename(file)}`,
+		basename(file),
+		hash,
+	]),
+	...Object.entries(pins.ffmpeg.runtimeFiles).map(([file, hash]) => [
+		`ffmpeg/${file}`,
+		`bin/${file}`,
+		hash,
+	]),
+	["mpv/vulkan-1.dll", "vulkan-1.dll", pins.vulkan.dllSha256],
 	["vulkan/VulkanRT-License.txt", "licenses/VulkanRT-License.txt", pins.vulkan.licenseSha256],
 ];
 
 export async function verifyDependencies() {
 	for (const [file, , hash] of dependencyFiles) await verify(join(nativeRoot, file), hash);
-	for (const [file] of dependencyFiles.filter(([file]) => /\.(exe|dll)$/.test(file)))
-		await inspectFile(join(nativeRoot, file));
+	for (const [file, destination] of dependencyFiles.filter(([file]) =>
+		/\.(exe|dll)$/.test(file),
+	)) {
+		const image = await inspectFile(join(nativeRoot, file));
+		const neighbors = dependencyFiles
+			.filter(
+				([, other]) =>
+					other.slice(0, other.lastIndexOf("/") + 1) ===
+					destination.slice(0, destination.lastIndexOf("/") + 1),
+			)
+			.map(([, other]) => basename(other));
+		const missing = unexpectedImports(image.imports, neighbors);
+		if (missing.length)
+			throw new Error(`Unresolved runtime dependencies in ${file}: ${missing.join(", ")}`);
+	}
 	const version = await runVerified(
 		join(nativeRoot, "ffmpeg/ffmpeg.exe"),
 		pins.ffmpeg.ffmpegSha256,
@@ -74,6 +97,13 @@ export async function verifyDependencies() {
 	) {
 		throw new Error("Unsupported FFmpeg build/version/license configuration");
 	}
+	const probe = await runVerified(
+		join(nativeRoot, "ffmpeg/ffprobe.exe"),
+		pins.ffmpeg.ffprobeSha256,
+		["-version"],
+	);
+	if (!probe.split("\n")[0].includes(pins.ffmpeg.version))
+		throw new Error("Unsupported FFprobe version");
 	return version;
 }
 
@@ -118,22 +148,47 @@ export async function download(pin) {
 	}
 }
 
-async function prepare() {
-	await verify(join(nativeRoot, "libmpv-2.dll"), mpv.dllSha256).catch(() => {
-		throw new Error(
-			"First install the pinned libmpv using npm run native:setup -- <extracted-libmpv-2.dll>. See scripts/libmpv.json for the verified archive.",
-		);
-	});
+export async function prepareMedia(packageDirectory) {
+	await mkdir(join(root, "native-deps/downloads"), { recursive: true });
+	for (const pin of [pins.ffmpeg, mpv]) {
+		const archive = join(root, "native-deps/downloads", `${pin.archiveSha256}.zip`);
+		if (packageDirectory) {
+			await install(
+				join(resolve(packageDirectory), pin.archiveFile),
+				archive,
+				pin.archiveSha256,
+			);
+			await install(
+				join(resolve(packageDirectory), pin.sourceFile),
+				join(root, "native-deps/compliance-inputs", pin.sourceFile),
+				pin.sourceSha256,
+			);
+		}
+		await verify(archive, pin.archiveSha256).catch(() => {
+			throw new Error(
+				`Provide the corrected packages: npm run native:setup -- <package-directory> (${pin.archiveFile})`,
+			);
+		});
+		const temporary = await mkdtemp(join(root, "native-deps/extract-"));
+		try {
+			run(join(process.env.SystemRoot, "System32/tar.exe"), [
+				"-xf",
+				archive,
+				"-C",
+				temporary,
+				...Object.keys(pin.runtimeFiles),
+			]);
+			for (const [member, hash] of Object.entries(pin.runtimeFiles))
+				await install(
+					join(temporary, member),
+					join(nativeRoot, pin.directory, basename(member)),
+					hash,
+				);
+		} finally {
+			await rm(temporary, { recursive: true, force: true });
+		}
+	}
 	for (const [name, pin, members] of [
-		[
-			"ffmpeg",
-			pins.ffmpeg,
-			[
-				["bin/ffmpeg.exe", "ffmpeg.exe", pins.ffmpeg.ffmpegSha256],
-				["bin/ffprobe.exe", "ffprobe.exe", pins.ffmpeg.ffprobeSha256],
-				["LICENSE", "LICENSE", pins.ffmpeg.licenseSha256],
-			],
-		],
 		[
 			"vulkan",
 			pins.vulkan,
@@ -164,7 +219,19 @@ async function prepare() {
 			await rm(temporary, { recursive: true, force: true });
 		}
 	}
+	await install(
+		join(nativeRoot, "vulkan/vulkan-1.dll"),
+		join(nativeRoot, "mpv/vulkan-1.dll"),
+		pins.vulkan.dllSha256,
+	);
 	await verifyDependencies();
+	console.log(
+		`Verified KlinoffBuilds FFmpeg/FFprobe ${pins.ffmpeg.version} and libmpv ${mpv.version}: ${nativeRoot}`,
+	);
+}
+
+async function prepare(packageDirectory) {
+	await prepareMedia(packageDirectory);
 	await (await import("./installer-tools.mjs")).prepareInstallerTools();
 	console.log(
 		"Verified pinned media dependencies and project-local NSIS tools. No system installation performed.",
@@ -175,7 +242,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
 	const command = process.argv[2];
 	const action =
 		command === "prepare"
-			? prepare
+			? () => prepare(process.argv[3])
 			: command === "check"
 				? async () => {
 						await verifyDependencies();

@@ -1,8 +1,9 @@
 import { mkdir, mkdtemp, readFile, readdir, copyFile, writeFile } from "node:fs/promises";
-import { join, resolve, relative } from "node:path";
+import { basename, dirname, join, resolve, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { checksum } from "./native-deps.mjs";
-import { inspectFile } from "./windows-pe.mjs";
+import { inspectFile, unexpectedImports } from "./windows-pe.mjs";
+export { unexpectedImports } from "./windows-pe.mjs";
 import { checkCompliance, stageCompliance } from "./compliance.mjs";
 import { sourceState, assertSourceUnchanged } from "./source-archive.mjs";
 import { verifyInstallerTools } from "./installer-tools.mjs";
@@ -17,24 +18,6 @@ import {
 	run,
 	runVerified,
 } from "./windows-deps.mjs";
-
-// Deliberately finite: an unexpected non-system import must stop packaging.
-const systemDlls = new Set(
-	`advapi32 avicap32 avrt bcrypt bcryptprimitives cabinet cfgmgr32 clbcatq combase comctl32 comdlg32 crypt32 cryptbase cryptsp d2d1 d3d11 d3d12 d3dcompiler_47 dbghelp dnsapi dwmapi dwrite dxgi dxva2 gdi32 gdiplus imm32 iphlpapi kernel32 kernelbase mf mfplat mfreadwrite mfuuid mpr msimg32 msvcrt ncrypt normaliz ntdll ole32 oleacc oleaut32 opengl32 powrprof propsys psapi rpcrt4 secur32 setupapi shcore shell32 shlwapi sspicli ucrtbase user32 userenv usp10 uxtheme version winhttp wininet winmm winspool wintrust wldap32 ws2_32 wtsapi32`
-		.split(" ")
-		.map((name) => `${name}.dll`),
-);
-
-export function unexpectedImports(imports, bundledNames) {
-	const bundled = new Set(bundledNames.map((name) => name.toLowerCase()));
-	return imports.filter(
-		(name) =>
-			!systemDlls.has(name) &&
-			!/^api-ms-win-(core|crt|security)-[a-z0-9-]+\.dll$/.test(name) &&
-			!/^ext-ms-win-[a-z0-9-]+\.dll$/.test(name) &&
-			!bundled.has(name),
-	);
-}
 
 export function validateVersions(packageVersion, tauriVersion, cargoText) {
 	const cargoVersion = cargoText.match(/^version\s*=\s*"([^"]+)"/m)?.[1];
@@ -71,17 +54,18 @@ async function copy(source, destination) {
 async function auditBinaries(directory) {
 	const files = [
 		"klipper.exe",
-		"libmpv-2.dll",
-		"vulkan-1.dll",
-		"bin/ffmpeg.exe",
-		"bin/ffprobe.exe",
+		...dependencyFiles
+			.map(([, destination]) => destination)
+			.filter((file) => /\.(exe|dll)$/.test(file)),
 	];
 	const result = {};
 	for (const file of files) {
 		const inspected = await inspectFile(join(directory, file));
 		const missing = unexpectedImports(
 			inspected.imports,
-			file.startsWith("bin/") ? [] : ["libmpv-2.dll", "vulkan-1.dll"],
+			files
+				.filter((other) => dirname(other) === dirname(file))
+				.map((other) => basename(other)),
 		);
 		if (missing.length)
 			throw new Error(`Unresolved native dependencies in ${file}: ${missing.join(", ")}`);

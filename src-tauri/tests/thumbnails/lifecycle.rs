@@ -135,7 +135,11 @@ async fn cached_images_survive_restart_invalidate_changed_inputs_and_never_bypas
         .thumbnail(id, "changed".into(), missing.clone(), analysis.clone())
         .await
         .unwrap_err()
-        .contains("PATH"));
+        .contains(if cfg!(all(windows, debug_assertions)) {
+            "native:setup"
+        } else {
+            "PATH"
+        }));
     assert!(library
         .thumbnail(id, "new".into(), executable, analysis.clone())
         .await

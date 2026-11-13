@@ -29,6 +29,10 @@ test("reads x64 PE import names without executing the image", () => {
 	invalid.writeUInt16LE(0x14c, 132);
 	assert.throws(() => inspectPe(invalid), /Windows x64/);
 	assert.throws(() => inspectPe(Buffer.from("not an executable")), /malformed/);
+	const gcc = syntheticPe();
+	gcc.fill(0, 640, 680);
+	gcc.write("libstdc++-6.dll\0", 640);
+	assert.deepEqual(inspectPe(gcc).imports, ["libstdc++-6.dll"]);
 });
 
 test("rejects unresolved runtime DLLs instead of assuming the developer's installed runtime", () => {
@@ -47,17 +51,29 @@ test("rejects inconsistent release versions and preserves the explicit redistrib
 });
 
 test("runtime resource list contains only fixed, checksum-pinned tools and licenses", () => {
+	const destinations = dependencyFiles.map(([, destination]) => destination);
+	assert.equal(new Set(destinations).size, destinations.length);
+	for (const name of [
+		"libmpv-2.dll",
+		"libshaderc_shared.dll",
+		"libspirv-cross-c-shared.dll",
+		"vulkan-1.dll",
+		"bin/ffmpeg.exe",
+		"bin/ffprobe.exe",
+		"bin/libx264-165.dll",
+		"bin/libx265-217.dll",
+	])
+		assert.ok(destinations.includes(name), name);
+	for (const name of ["libgcc_s_seh-1.dll", "libstdc++-6.dll", "libwinpthread-1.dll"])
+		for (const prefix of ["", "bin/"]) assert.ok(destinations.includes(prefix + name));
 	assert.deepEqual(
-		dependencyFiles.map(([, destination]) => destination),
-		[
-			"libmpv-2.dll",
-			"bin/ffmpeg.exe",
-			"bin/ffprobe.exe",
-			"vulkan-1.dll",
-			"licenses/FFmpeg-GPL.txt",
-			"licenses/VulkanRT-License.txt",
-		],
+		unexpectedImports(
+			["libx265-217.dll"],
+			destinations.filter((n) => n.startsWith("bin/")).map((n) => n.slice(4)),
+		),
+		[],
 	);
+	assert.deepEqual(unexpectedImports(["libshaderc_shared.dll"], []), ["libshaderc_shared.dll"]);
 	for (const [source, destination, hash] of dependencyFiles) {
 		assert.match(hash, /^[a-f0-9]{64}$/);
 		assert.ok(!source.includes("..") && !destination.includes(".."));
